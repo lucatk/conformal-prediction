@@ -23,7 +23,8 @@ class FGNetDataset(Dataset):
     X_test: ndarray
     y_test: ndarray
 
-    def __init__(self):
+    def __init__(self, hold_out_size: int):
+        self.hold_out_size = hold_out_size
         self.train_dataset = FGNet(
             root="../.datasets",
             train=False,
@@ -44,7 +45,7 @@ class FGNetDataset(Dataset):
         X_test, y_test = np.array([x for x, y in iter(self.test_dataset)]), np.array(
             [y for x, y in iter(self.test_dataset)])
 
-        rs = ShuffleSplit(n_splits=1, test_size=.1, random_state=0)
+        rs = ShuffleSplit(n_splits=1, test_size=self.hold_out_size, random_state=0)
         train_index, hold_out_index = next(rs.split(X_train))
         self.X_train = X_train[train_index]
         self.y_train = y_train[train_index]
