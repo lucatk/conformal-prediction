@@ -101,8 +101,10 @@ class CPRunner:
                 loss_fns.append(TriangularCrossEntropyLoss(num_classes=num_classes))
             elif loss_fn == 'CrossEntropy':
                 loss_fns.append(CrossEntropyLoss())
-            elif loss_fn == 'OrdinalECOCDistance':
-                loss_fns.append(OrdinalECOCDistanceLoss(num_classes=num_classes))
+            # elif loss_fn == 'OrdinalECOCDistance':
+            #     loss_fns.append(OrdinalECOCDistanceLoss(num_classes=num_classes))
+            # weighted kappa
+            # emd loss
             else:
                 raise ValueError(f"Unknown loss function: {loss_fn}")
         return loss_fns
