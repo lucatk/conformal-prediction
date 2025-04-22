@@ -8,7 +8,7 @@ from streamlit.delta_generator import DeltaGenerator
 dataset_vals = ['FGNet', 'RetinaMNIST']
 model_vals = ['resnet18']
 evaluation_target_vals = ['score_algorithm', 'loss_fn']
-loss_fn_vals = ['CrossEntropy', 'TriangularCrossEntropy']
+loss_fn_vals = ['CrossEntropy', 'TriangularCrossEntropy', 'OrdinalECOCDistance']
 score_alg_vals = ['LAC']
 
 # -- Streamlit Setup

@@ -1,5 +1,6 @@
 import time
 
+from dlordinal.losses import OrdinalECOCDistanceLoss
 from mapie.classification import MapieClassifier
 from mapie.metrics import classification_coverage_score, classification_mean_width_score
 from numpy import ndarray
@@ -100,6 +101,8 @@ class CPRunner:
                 loss_fns.append(TriangularCrossEntropyLoss(num_classes=num_classes))
             elif loss_fn == 'CrossEntropy':
                 loss_fns.append(CrossEntropyLoss())
+            elif loss_fn == 'OrdinalECOCDistance':
+                loss_fns.append(OrdinalECOCDistanceLoss(num_classes=num_classes))
             else:
                 raise ValueError(f"Unknown loss function: {loss_fn}")
         return loss_fns
