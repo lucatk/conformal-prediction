@@ -1,10 +1,14 @@
-dlordinal==2.3.2
+dlordinal==2.4.1
 MAPIE==0.9.2
 numpy==1.26.4
 pandas==2.2.3
 scikit-learn==1.5.2
 skorch==1.1.0
 streamlit==1.44.1
-torch==2.5.1
+torch~=2.6.0
 tornado==6.4.2
 watchdog==6.0.0
+matplotlib==3.10.1
+medmnist==3.0.2
+torchvision~=0.21.0
+pillow~=11.2.1

@@ -1,17 +1,18 @@
+import math
 import numpy as np
 import pandas as pd
 import streamlit as st
 import torch
-from matplotlib import pyplot as plt
 
-from util import st_narrow
+from util import plot_image_samples, frame_image_samples, st_narrow
+from matplotlib import pyplot as plt
 
 # -- PARAMETERS
 
 dataset_vals = ['FGNet', 'RetinaMNIST']
-model_vals = ['resnet18']
+model_vals = ['resnet18', 'resnet50']
 evaluation_target_vals = ['score_algorithm', 'loss_fn']
-loss_fn_vals = ['CrossEntropy', 'TriangularCrossEntropy', 'OrdinalECOCDistance']
+loss_fn_vals = ['CrossEntropy', 'TriangularCrossEntropy', 'WeightedKappa', 'EMD']
 score_alg_vals = ['LAC']
 
 # -- Streamlit Setup
@@ -67,6 +68,8 @@ param_alpha = st.sidebar.slider(
     step=0.01,
 )
 
+torch.classes.__path__ = []
+
 @st.cache_resource
 def load_cp_runner(dataset, model, score_alg, loss_fn, alpha):
     from cp_runner import CPRunner
@@ -90,8 +93,6 @@ if param_dataset == '' or param_model == '' or param_score_alg == [] or param_lo
     st.warning('Please input all parameters.')
     st.stop()
 
-torch.classes.__path__ = []
-
 cp_runner = load_cp_runner(param_dataset, param_model, param_score_alg, param_loss_fn, param_alpha)
 
 if not cp_runner.has_run:
@@ -100,7 +101,19 @@ if not cp_runner.has_run:
         if st.button('Start evaluation'):
             dataset = load_dataset(param_dataset, hold_out_size=param_hold_out_size)
             progress_bar = st.progress(0, text='Evaluation in progress...')
-            cp_runner.run(dataset, progress_bar)
+            try:
+                cp_runner.run(dataset, progress_bar)
+            except:
+                st.error('An error occurred during evaluation. Please check the logs for more details.')
+                if st.button('Retry'):
+                    load_cp_runner.clear(param_dataset, param_model, param_score_alg, param_loss_fn, param_alpha)
+                    st.rerun()
+                raise
+            st.rerun()
+    elif cp_runner.has_error:
+        st.error('An error occurred during evaluation. Please check the logs for more details.')
+        if st.button('Retry'):
+            load_cp_runner.clear(param_dataset, param_model, param_score_alg, param_loss_fn, param_alpha)
             st.rerun()
     else:
         st.write('Evaluating... Refresh the page to see the results.')
@@ -108,15 +121,47 @@ if not cp_runner.has_run:
 
 # -- RESULTS
 
-st.title('Results')
+st.subheader('Metrics')
 
 results = cp_runner.get_results()
 
 df = pd.DataFrame(
-    [(name, mean_width, coverage) for name, (_, _, mean_width, coverage) in results.items()],
-    columns=['name', 'mean_width', 'coverage']
+    [(*name.split('_', 1), mean_width, coverage) for name, (_, _, mean_width, coverage) in results.items()],
+    columns=['loss_fn', 'score_alg', 'mean_width', 'coverage']
 )
 st.dataframe(df)
+
+X_test, y_test = cp_runner.dataset.get_test_data()
+
+st.subheader('Samples')
+# start_idx = st.slider('Idx of samples to display', min_value=0, max_value=math.floor(len(X_test) / 16) * 16, step=16)
+#
+# indices = range(start_idx, min(start_idx + 16, len(X_test)))
+# plt = plot_image_samples(
+#     indices,
+#     X_test,
+#     y_test,
+#     {name: y_pred_set for name, (_, y_pred_set, _, _) in results.items()},
+#     cp_runner.dataset.get_class_labels()
+# )
+#
+# st.pyplot(plt, use_container_width=True)
+
+samples_df = frame_image_samples(
+    X_test,
+    y_test,
+    {name: y_pred_set for name, (_, y_pred_set, _, _) in results.items()},
+    cp_runner.dataset.get_class_labels()
+)
+
+st.dataframe(
+    samples_df,
+    column_config={
+        'image': st.column_config.ImageColumn(),
+    },
+    row_height=64,
+    height=600,
+)
 
 predictor_names = list(results.keys())
 n_predictors = len(predictor_names)
