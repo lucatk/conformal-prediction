@@ -1,14 +1,13 @@
-import time
+import copy
 
-from dlordinal.losses import OrdinalECOCDistanceLoss
 from mapie.classification import MapieClassifier
 from mapie.metrics import classification_coverage_score, classification_mean_width_score
 from numpy import ndarray
 from sklearn.base import ClassifierMixin
 from streamlit.elements.progress import ProgressMixin
 from torch import nn
-from torch.nn import CrossEntropyLoss, Module
-from torch.optim import Adam
+from torch.nn import CrossEntropyLoss
+from torch.optim import Adam, AdamW
 from torchvision import models
 
 from datasets.base_dataset import Dataset
@@ -18,7 +17,9 @@ from util import SoftmaxNeuralNetClassifier
 class CPRunner:
     progress: float | None = None
     has_run: bool = False
+    has_error: bool = False
 
+    dataset: Dataset
     preds: dict[str, tuple[ndarray, ndarray, float, float]] = {}
 
     def __init__(self, dataset_name: str, model: str, score_alg: list[str], loss_fn: list[str], alpha: float, device: str):
@@ -30,39 +31,47 @@ class CPRunner:
         self.device = device
 
     def run(self, dataset: Dataset, progress_bar: ProgressMixin):
-        if self.has_run or self.progress is not None:
+        if self.has_run or (self.progress is not None and not self.has_error):
             return
+        self.has_error = False
+        self.dataset = dataset
         self.set_progress(0, progress_bar)
 
-        self.set_progress(0.1, progress_bar, f'Training...')
-        estimators = self._get_estimators(dataset.get_num_classes())
-        X_train, y_train = dataset.get_train_data()
-        self.set_progress(0.1, progress_bar, f'Training (0/{len(estimators)})...')
-        for idx, estimator in enumerate(estimators):
-            estimator.fit(X_train, y_train)
-            self.set_progress(0.1 + ((idx + 1) / len(estimators)) * 0.3, progress_bar, f'Training ({idx + 1}/{len(estimators)})...')
+        try:
+            self.set_progress(0, progress_bar, f'Fitting...')
+            estimators = self._get_estimators(dataset.get_num_classes())
+            predictors = self._get_cp_predictors(estimators)
 
-        self.set_progress(0.4, progress_bar, 'Fitting predictors...')
-        predictors = self._get_cp_predictors(estimators)
-        X_holdout, y_holdout = dataset.get_hold_out_data()
-        self.set_progress(0.1, progress_bar, f'Fitting predictors (0/{len(predictors)})...')
-        for idx, (name, predictor) in enumerate(predictors.items()):
-            predictor.fit(X_holdout, y_holdout)
-            self.set_progress(0.4 + ((idx + 1) / len(predictors)) * 0.3, progress_bar, f'Fitting predictors ({idx + 1}/{len(predictors)})...')
+            X_train, y_train = dataset.get_train_data()
+            print("X_train shape:", X_train.shape)
+            print("y_train shape:", y_train.shape)
+            for idx, (name, predictor) in enumerate(predictors.items()):
+                self.set_progress(0.1 + (idx / len(estimators)) * 0.4, progress_bar, f'Fitting {name} ({idx + 1}/{len(estimators)})...')
+                predictor.fit(X_train, y_train)
 
-        self.set_progress(0.7, progress_bar, f'Predicting (0/{len(predictors)})...')
-        X_test, y_test = dataset.get_test_data()
-        for idx, (name, predictor) in enumerate(predictors.items()):
-            y_pred, y_pred_set = predictor.predict(X_test, alpha=self.alpha)
-            self.preds[name] = (
-                y_pred,
-                y_pred_set,
-                classification_mean_width_score(y_pred_set[:, :, 0]),
-                classification_coverage_score(y_test, y_pred_set[:, :, 0]),
-            )
-            self.set_progress(0.7 + ((idx + 1) / len(predictors)) * 0.3, progress_bar, f'Predicting ({idx + 1}/{len(predictors)})...')
+            # self.set_progress(0.4, progress_bar, 'Fitting predictors...')
+            # X_holdout, y_holdout = dataset.get_hold_out_data()
+            # self.set_progress(0.1, progress_bar, f'Fitting predictors (0/{len(predictors)})...')
+            # for idx, (name, predictor) in enumerate(predictors.items()):
+            #     predictor.fit(X_holdout, y_holdout)
+            #     self.set_progress(0.4 + ((idx + 1) / len(predictors)) * 0.3, progress_bar, f'Fitting predictors ({idx + 1}/{len(predictors)})...')
 
+            self.set_progress(0.5, progress_bar, f'Predicting (0/{len(predictors)})...')
+            X_test, y_test = dataset.get_test_data()
+            for idx, (name, predictor) in enumerate(predictors.items()):
+                self.set_progress(0.6 + (idx / len(predictors)) * 0.4, progress_bar, f'Predicting {name} ({idx + 1}/{len(predictors)})...')
+                y_pred, y_pred_set = predictor.predict(X_test, alpha=self.alpha)
+                self.preds[name] = (
+                    y_pred,
+                    y_pred_set,
+                    classification_mean_width_score(y_pred_set[:, :, 0]),
+                    classification_coverage_score(y_test, y_pred_set[:, :, 0]),
+                )
+        except:
+            self.has_error = True
+            raise
         self.has_run = True
+
 
     def set_progress(self, progress, progress_bar: ProgressMixin, text: str = None):
         self.progress = progress
@@ -86,8 +95,10 @@ class CPRunner:
             SoftmaxNeuralNetClassifier(
                 module=model,
                 criterion=loss_fn.to(self.device),
-                optimizer=Adam,
+                optimizer=AdamW,
                 lr=1e-3,
+                batch_size=32,
+                train_split=None,
                 max_epochs=25,
                 device=self.device,
             )
@@ -96,11 +107,17 @@ class CPRunner:
     def _get_loss_fn_set(self, num_classes: int):
         loss_fns = []
         for loss_fn in self.loss_fn:
-            if loss_fn == 'TriangularCrossEntropy':
-                from dlordinal.losses import TriangularCrossEntropyLoss
-                loss_fns.append(TriangularCrossEntropyLoss(num_classes=num_classes))
-            elif loss_fn == 'CrossEntropy':
+            if loss_fn == 'CrossEntropy':
                 loss_fns.append(CrossEntropyLoss())
+            elif loss_fn == 'TriangularCrossEntropy':
+                from dlordinal.losses import TriangularLoss
+                loss_fns.append(TriangularLoss(base_loss=CrossEntropyLoss(), num_classes=num_classes))
+            elif loss_fn == 'WeightedKappa':
+                from dlordinal.losses import WKLoss
+                loss_fns.append(WKLoss(num_classes=num_classes, use_logits=True))
+            elif loss_fn == 'EMD':
+                from dlordinal.losses import EMDLoss
+                loss_fns.append(EMDLoss(num_classes=num_classes))
             # elif loss_fn == 'OrdinalECOCDistance':
             #     loss_fns.append(OrdinalECOCDistanceLoss(num_classes=num_classes))
             # weighted kappa
@@ -126,7 +143,7 @@ class CPRunner:
                 MapieClassifier(
                     estimator=estimator,
                     conformity_score=score_alg,
-                    cv='prefit',
+                    cv='split',
                 )
             )
             for loss_fn_idx, estimator in enumerate(estimators)

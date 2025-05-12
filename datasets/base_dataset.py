@@ -31,3 +31,10 @@ class Dataset(ABC):
         Returns the number of classes.
         """
         pass
+
+    @abstractmethod
+    def get_class_labels(self) -> list[str]:
+        """
+        Returns the class labels.
+        """
+        pass
