@@ -1,7 +1,10 @@
+import numpy as np
 import pandas as pd
 import streamlit as st
 import torch
-from streamlit.delta_generator import DeltaGenerator
+from matplotlib import pyplot as plt
+
+from util import st_narrow
 
 # -- PARAMETERS
 
@@ -114,3 +117,36 @@ df = pd.DataFrame(
     columns=['name', 'mean_width', 'coverage']
 )
 st.dataframe(df)
+
+predictor_names = list(results.keys())
+n_predictors = len(predictor_names)
+
+# Assume all methods have same number of classes
+n_classes = next(iter(results.values()))[1].shape[1]
+x = np.arange(1, n_classes + 1)  # possible set sizes
+
+hist_data = []
+for pred in predictor_names:
+    y_pred, y_pred_set, _, _ = results[pred]
+    pred_set = y_pred_set[:, :, 0]  # Drop alpha dim
+    set_sizes = np.sum(pred_set, axis=1)
+    hist, _ = np.histogram(set_sizes, bins=np.arange(0.5, n_classes + 1.5))  # bin edges like 0.5, 1.5, ...
+    hist_data.append(hist)
+
+# Plot grouped histogram
+bar_width = 0.8 / n_predictors
+fig = plt.figure(figsize=(10, 6))
+for i, hist in enumerate(hist_data):
+    plt.bar(x + i * bar_width - (bar_width * n_predictors) / 2, hist,
+            width=bar_width, label=predictor_names[i])
+
+plt.xlabel('Prediction Set Size')
+plt.ylabel('Frequency')
+plt.title('Prediction Set Size Distribution by Method')
+plt.xticks(x)
+plt.legend()
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.tight_layout()
+
+with st_narrow():
+    st.pyplot(fig, use_container_width=False)

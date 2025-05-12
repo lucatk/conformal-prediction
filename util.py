@@ -1,6 +1,7 @@
 from skorch import NeuralNetClassifier
 from torch.nn.functional import softmax
 
+import streamlit as st
 
 class SoftmaxNeuralNetClassifier(NeuralNetClassifier):
     def predict_proba(self, X):
@@ -11,3 +12,8 @@ class SoftmaxNeuralNetClassifier(NeuralNetClassifier):
     def predict(self, X):
         proba = self.predict_proba(X)
         return proba.argmax(axis=1)
+
+
+def st_narrow():
+    _, col, _ = st.columns([1, 6, 1])
+    return col
