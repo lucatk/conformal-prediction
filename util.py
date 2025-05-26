@@ -9,11 +9,11 @@ from PIL import Image
 from highlight_text import fig_text, ax_text
 from matplotlib import pyplot as plt
 from numpy import ndarray
-from pandas.io.formats.style import Styler
 from skorch import NeuralNetClassifier
 from torch.nn.functional import softmax
 
 import streamlit as st
+
 
 class SoftmaxNeuralNetClassifier(NeuralNetClassifier):
     def predict_proba(self, X):

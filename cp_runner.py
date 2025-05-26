@@ -4,6 +4,7 @@ from mapie.classification import MapieClassifier
 from mapie.metrics import classification_coverage_score, classification_mean_width_score
 from numpy import ndarray
 from sklearn.base import ClassifierMixin
+from skorch.callbacks import Callback
 from streamlit.elements.progress import ProgressMixin
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -15,6 +16,8 @@ from util import SoftmaxNeuralNetClassifier
 
 
 class CPRunner:
+    max_epochs = 25
+
     progress: float | None = None
     has_run: bool = False
     has_error: bool = False
@@ -22,7 +25,8 @@ class CPRunner:
     dataset: Dataset
     preds: dict[str, tuple[ndarray, ndarray, float, float]] = {}
 
-    def __init__(self, dataset_name: str, model: str, score_alg: list[str], loss_fn: list[str], alpha: float, device: str):
+    def __init__(self, dataset_name: str, model: str, score_alg: list[str], loss_fn: list[str], alpha: float,
+                 device: str):
         self.dataset_name = dataset_name
         self.model = model
         self.score_alg = score_alg
@@ -46,7 +50,20 @@ class CPRunner:
             print("X_train shape:", X_train.shape)
             print("y_train shape:", y_train.shape)
             for idx, (name, predictor) in enumerate(predictors.items()):
-                self.set_progress(0.1 + (idx / len(estimators)) * 0.4, progress_bar, f'Fitting {name} ({idx + 1}/{len(estimators)})...')
+                self.set_progress(0.1 + (idx / len(predictors)) * 0.4, progress_bar,
+                                  f'Fitting {name} ({idx + 1}/{len(predictors)})...')
+
+                class EpochProgress(Callback):
+                    def __init__(self, cp_runner: CPRunner):
+                        self.cp_runner = cp_runner
+
+                    def on_epoch_begin(self, net, **kwargs):
+                        cur_epoch = len(net.history)
+                        self.cp_runner.set_progress(
+                            0.1 + ((idx + (cur_epoch/self.cp_runner.max_epochs)) / len(predictors)) * 0.4, progress_bar,
+                                  f'Fitting {name} ({idx + 1}/{len(predictors)}) - epoch {cur_epoch}/{self.cp_runner.max_epochs}...')
+
+                predictor.estimator.set_params(callbacks=[('epoch_progress', EpochProgress(self))])
                 predictor.fit(X_train, y_train)
 
             # self.set_progress(0.4, progress_bar, 'Fitting predictors...')
@@ -59,7 +76,8 @@ class CPRunner:
             self.set_progress(0.5, progress_bar, f'Predicting (0/{len(predictors)})...')
             X_test, y_test = dataset.get_test_data()
             for idx, (name, predictor) in enumerate(predictors.items()):
-                self.set_progress(0.6 + (idx / len(predictors)) * 0.4, progress_bar, f'Predicting {name} ({idx + 1}/{len(predictors)})...')
+                self.set_progress(0.6 + (idx / len(predictors)) * 0.4, progress_bar,
+                                  f'Predicting {name} ({idx + 1}/{len(predictors)})...')
                 y_pred, y_pred_set = predictor.predict(X_test, alpha=self.alpha)
                 self.preds[name] = (
                     y_pred,
@@ -71,7 +89,6 @@ class CPRunner:
             self.has_error = True
             raise
         self.has_run = True
-
 
     def set_progress(self, progress, progress_bar: ProgressMixin, text: str = None):
         self.progress = progress
@@ -99,7 +116,7 @@ class CPRunner:
                 lr=1e-3,
                 batch_size=32,
                 train_split=None,
-                max_epochs=25,
+                max_epochs=self.max_epochs,
                 device=self.device,
             )
         ) for loss_fn in loss_fn_set]
@@ -132,6 +149,12 @@ class CPRunner:
             if score_alg == 'LAC':
                 from mapie.conformity_scores import LACConformityScore
                 score_algs.append(LACConformityScore())
+            elif score_alg == 'RAPS':
+                from mapie.conformity_scores import RAPSConformityScore
+                score_algs.append(RAPSConformityScore(size_raps=0.2))
+            elif score_alg == 'RPS':
+                from conformity_scores.rps import RPSConformityScore
+                score_algs.append(RPSConformityScore())
             else:
                 raise ValueError(f"Unknown score algorithm: {score_alg}")
         return score_algs

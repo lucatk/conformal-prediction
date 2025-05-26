@@ -1,10 +1,10 @@
-import math
 import numpy as np
 import pandas as pd
 import streamlit as st
 import torch
 
-from util import plot_image_samples, frame_image_samples, st_narrow
+from metrics import get_metrics
+from util import frame_image_samples, st_narrow
 from matplotlib import pyplot as plt
 
 # -- PARAMETERS
@@ -13,7 +13,7 @@ dataset_vals = ['FGNet', 'RetinaMNIST']
 model_vals = ['resnet18', 'resnet50']
 evaluation_target_vals = ['score_algorithm', 'loss_fn']
 loss_fn_vals = ['CrossEntropy', 'TriangularCrossEntropy', 'WeightedKappa', 'EMD']
-score_alg_vals = ['LAC']
+score_alg_vals = ['LAC', 'RAPS', 'RPS']
 
 # -- Streamlit Setup
 st.set_page_config(page_title='Conformal Prediction', layout='wide', page_icon=':leg:')
@@ -70,6 +70,7 @@ param_alpha = st.sidebar.slider(
 
 torch.classes.__path__ = []
 
+
 @st.cache_resource
 def load_cp_runner(dataset, model, score_alg, loss_fn, alpha):
     from cp_runner import CPRunner
@@ -120,18 +121,18 @@ if not cp_runner.has_run:
     st.stop()
 
 # -- RESULTS
+X_test, y_test = cp_runner.dataset.get_test_data()
 
 st.subheader('Metrics')
 
 results = cp_runner.get_results()
 
 df = pd.DataFrame(
-    [(*name.split('_', 1), mean_width, coverage) for name, (_, _, mean_width, coverage) in results.items()],
-    columns=['loss_fn', 'score_alg', 'mean_width', 'coverage']
+    [(*name.split('_', 1), *get_metrics(y_test, pred_results)) for name, pred_results in results.items()],
+    columns=['loss_fn', 'score_alg', 'mean_width', 'coverage', 'avg_range', 'avg_gaps', 'avg_ordinal_distance'],
 )
 st.dataframe(df)
 
-X_test, y_test = cp_runner.dataset.get_test_data()
 
 st.subheader('Samples')
 # start_idx = st.slider('Idx of samples to display', min_value=0, max_value=math.floor(len(X_test) / 16) * 16, step=16)

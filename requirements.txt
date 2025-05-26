@@ -12,3 +12,4 @@ matplotlib==3.10.1
 medmnist==3.0.2
 torchvision~=0.21.0
 pillow~=11.2.1
+highlight_text==0.2
