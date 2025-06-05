@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 # -- PARAMETERS
 
 dataset_vals = ['FGNet', 'RetinaMNIST']
-model_vals = ['resnet18', 'resnet50']
+model_vals = ['resnet18', 'resnet18-uni', 'resnet50']
 evaluation_target_vals = ['score_algorithm', 'loss_fn']
 loss_fn_vals = ['CrossEntropy', 'TriangularCrossEntropy', 'WeightedKappa', 'EMD']
 score_alg_vals = ['LAC', 'RAPS', 'RPS']

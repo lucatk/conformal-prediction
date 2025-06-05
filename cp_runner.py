@@ -12,6 +12,7 @@ from torch.optim import Adam, AdamW
 from torchvision import models
 
 from datasets.base_dataset import Dataset
+from models.resnet18_uni import UnimodalResNet18
 from util import SoftmaxNeuralNetClassifier
 
 
@@ -94,18 +95,21 @@ class CPRunner:
         self.progress = progress
         progress_bar.progress(progress, text=text)
 
-    def _get_model(self):
+    def _get_model(self, num_classes: int):
         if self.model == 'resnet18':
             model = models.resnet18(weights="IMAGENET1K_V1")
+            model.fc = nn.Linear(model.fc.in_features, num_classes)
         elif self.model == 'resnet50':
             model = models.resnet50(weights="IMAGENET1K_V1")
+            model.fc = nn.Linear(model.fc.in_features, num_classes)
+        elif self.model == 'resnet18-uni':
+            model = UnimodalResNet18(num_classes)
         else:
             raise ValueError(f"Unknown model: {self.model}")
         return model
 
     def _get_estimators(self, num_classes: int):
-        model = self._get_model()
-        model.fc = nn.Linear(model.fc.in_features, num_classes)
+        model = self._get_model(num_classes)
         model = model.to(self.device)
         loss_fn_set = self._get_loss_fn_set(num_classes)
         return [(
