@@ -27,6 +27,20 @@ def get_metrics(
     )
 
 
+def get_metrics_across_reps(
+    y_true: ndarray,
+    rep_preds: list[tuple[ndarray, ndarray, float, float]],
+) -> Metrics:
+    rep_metrics = [get_metrics(y_true, preds) for preds in rep_preds]
+    return Metrics(
+        coverage=np.mean([m.coverage for m in rep_metrics]),
+        mean_width=np.mean([m.mean_width for m in rep_metrics]),
+        avg_range=np.mean([m.avg_range for m in rep_metrics]),
+        avg_gaps=np.mean([m.avg_gaps for m in rep_metrics]),
+        avg_ordinal_distance=np.mean([m.avg_ordinal_distance for m in rep_metrics]),
+    )
+
+
 def calc_avg_range(
     y_pred_set: ndarray,
 ) -> floating:

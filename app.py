@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 import torch
 
-from metrics import get_metrics
+from metrics import get_metrics, get_metrics_across_reps
 from util import frame_image_samples, st_narrow
 from matplotlib import pyplot as plt
 
@@ -67,6 +67,13 @@ param_alpha = st.sidebar.slider(
     value=0.2,
     step=0.01,
 )
+param_replication = st.sidebar.slider(
+    'Replication',
+    min_value=1,
+    max_value=100,
+    value=1,
+    step=1,
+)
 
 torch.classes.__path__ = []
 
@@ -103,7 +110,7 @@ if not cp_runner.has_run:
             dataset = load_dataset(param_dataset, hold_out_size=param_hold_out_size)
             progress_bar = st.progress(0, text='Evaluation in progress...')
             try:
-                cp_runner.run(dataset, progress_bar)
+                cp_runner.run(dataset, param_replication, progress_bar)
             except:
                 st.error('An error occurred during evaluation. Please check the logs for more details.')
                 if st.button('Retry'):
@@ -128,56 +135,54 @@ st.subheader('Metrics')
 results = cp_runner.get_results()
 
 df = pd.DataFrame(
-    [(*name.split('_', 1), *get_metrics(y_test, pred_results)) for name, pred_results in results.items()],
+    [(*name.split('_', 1), *get_metrics_across_reps(y_test, pred_results)) for name, pred_results in results.items()],
     columns=['loss_fn', 'score_alg', 'mean_width', 'coverage', 'avg_range', 'avg_gaps', 'avg_ordinal_distance'],
 )
 st.dataframe(df)
 
+if param_replication == 1:
+    st.subheader('Samples')
 
-st.subheader('Samples')
-# start_idx = st.slider('Idx of samples to display', min_value=0, max_value=math.floor(len(X_test) / 16) * 16, step=16)
-#
-# indices = range(start_idx, min(start_idx + 16, len(X_test)))
-# plt = plot_image_samples(
-#     indices,
-#     X_test,
-#     y_test,
-#     {name: y_pred_set for name, (_, y_pred_set, _, _) in results.items()},
-#     cp_runner.dataset.get_class_labels()
-# )
-#
-# st.pyplot(plt, use_container_width=True)
+    samples_df = frame_image_samples(
+        X_test,
+        y_test,
+        {name: y_pred_set for name, (_, y_pred_set, _, _) in results.items()},
+        cp_runner.dataset.get_class_labels()
+    )
 
-samples_df = frame_image_samples(
-    X_test,
-    y_test,
-    {name: y_pred_set for name, (_, y_pred_set, _, _) in results.items()},
-    cp_runner.dataset.get_class_labels()
-)
-
-st.dataframe(
-    samples_df,
-    column_config={
-        'image': st.column_config.ImageColumn(),
-    },
-    row_height=64,
-    height=600,
-)
+    st.dataframe(
+        samples_df,
+        column_config={
+            'image': st.column_config.ImageColumn(),
+        },
+        row_height=64,
+        height=600,
+    )
 
 predictor_names = list(results.keys())
 n_predictors = len(predictor_names)
 
 # Assume all methods have same number of classes
-n_classes = next(iter(results.values()))[1].shape[1]
+n_classes = next(iter(results.values()))[0][1].shape[1]
 x = np.arange(1, n_classes + 1)  # possible set sizes
 
 hist_data = []
 for pred in predictor_names:
-    y_pred, y_pred_set, _, _ = results[pred]
-    pred_set = y_pred_set[:, :, 0]  # Drop alpha dim
-    set_sizes = np.sum(pred_set, axis=1)
-    hist, _ = np.histogram(set_sizes, bins=np.arange(0.5, n_classes + 1.5))  # bin edges like 0.5, 1.5, ...
-    hist_data.append(hist)
+    pred_hists = []
+    for _, y_pred_set, _, _ in results[pred]:  # list of tuples
+        pred_set = y_pred_set[:, :, 0]  # Drop alpha dim
+        set_sizes = np.sum(pred_set, axis=1)
+        hist, _ = np.histogram(set_sizes, bins=np.arange(0.5, n_classes + 1.5))
+        pred_hists.append(hist)
+    avg_hist = np.mean(np.stack(pred_hists), axis=0)
+    hist_data.append(avg_hist)
+# hist_data = []
+# for pred in predictor_names:
+#     y_pred, y_pred_set, _, _ = results[pred][1]
+#     pred_set = y_pred_set[:, :, 0]  # Drop alpha dim
+#     set_sizes = np.sum(pred_set, axis=1)
+#     hist, _ = np.histogram(set_sizes, bins=np.arange(0.5, n_classes + 1.5))  # bin edges like 0.5, 1.5, ...
+#     hist_data.append(hist)
 
 # Plot grouped histogram
 bar_width = 0.8 / n_predictors

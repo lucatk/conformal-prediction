@@ -24,7 +24,7 @@ class CPRunner:
     has_error: bool = False
 
     dataset: Dataset
-    preds: dict[str, tuple[ndarray, ndarray, float, float]] = {}
+    preds: dict[str, list[tuple[ndarray, ndarray, float, float]]] = {}
 
     def __init__(self, dataset_name: str, model: str, score_alg: list[str], loss_fn: list[str], alpha: float,
                  device: str):
@@ -35,7 +35,7 @@ class CPRunner:
         self.alpha = alpha
         self.device = device
 
-    def run(self, dataset: Dataset, progress_bar: ProgressMixin):
+    def run(self, dataset: Dataset, num_replications: int, progress_bar: ProgressMixin):
         if self.has_run or (self.progress is not None and not self.has_error):
             return
         self.has_error = False
@@ -43,49 +43,54 @@ class CPRunner:
         self.set_progress(0, progress_bar)
 
         try:
-            self.set_progress(0, progress_bar, f'Fitting...')
-            estimators = self._get_estimators(dataset.get_num_classes())
-            predictors = self._get_cp_predictors(estimators)
+            for rep in range(num_replications):  # repeat the fitting process for each replication
+                self.set_progress(0, progress_bar, f'[Replication {rep+1}] Fitting...')
+                estimators = self._get_estimators(dataset.get_num_classes())
+                predictors = self._get_cp_predictors(estimators)
 
-            X_train, y_train = dataset.get_train_data()
-            print("X_train shape:", X_train.shape)
-            print("y_train shape:", y_train.shape)
-            for idx, (name, predictor) in enumerate(predictors.items()):
-                self.set_progress(0.1 + (idx / len(predictors)) * 0.4, progress_bar,
-                                  f'Fitting {name} ({idx + 1}/{len(predictors)})...')
+                X_train, y_train = dataset.get_train_data()
+                print("X_train shape:", X_train.shape)
+                print("y_train shape:", y_train.shape)
+                for idx, (name, predictor) in enumerate(predictors.items()):
+                    self.set_progress(0.1 + (idx / len(predictors)) * 0.4, progress_bar,
+                                      f'[Replication {rep+1}] Fitting {name} ({idx + 1}/{len(predictors)})...')
 
-                class EpochProgress(Callback):
-                    def __init__(self, cp_runner: CPRunner):
-                        self.cp_runner = cp_runner
+                    class EpochProgress(Callback):
+                        def __init__(self, cp_runner: CPRunner):
+                            self.cp_runner = cp_runner
 
-                    def on_epoch_begin(self, net, **kwargs):
-                        cur_epoch = len(net.history)
-                        self.cp_runner.set_progress(
-                            0.1 + ((idx + (cur_epoch/self.cp_runner.max_epochs)) / len(predictors)) * 0.4, progress_bar,
-                                  f'Fitting {name} ({idx + 1}/{len(predictors)}) - epoch {cur_epoch}/{self.cp_runner.max_epochs}...')
+                        def on_epoch_begin(self, net, **kwargs):
+                            cur_epoch = len(net.history)
+                            self.cp_runner.set_progress(
+                                0.1 + ((idx + (cur_epoch/self.cp_runner.max_epochs)) / len(predictors)) * 0.4, progress_bar,
+                                      f'[Replication {rep+1}] Fitting {name} ({idx + 1}/{len(predictors)}) - epoch {cur_epoch}/{self.cp_runner.max_epochs}...')
 
-                predictor.estimator.set_params(callbacks=[('epoch_progress', EpochProgress(self))])
-                predictor.fit(X_train, y_train)
+                    predictor.estimator.set_params(callbacks=[('epoch_progress', EpochProgress(self))])
+                    predictor.fit(X_train, y_train)
 
-            # self.set_progress(0.4, progress_bar, 'Fitting predictors...')
-            # X_holdout, y_holdout = dataset.get_hold_out_data()
-            # self.set_progress(0.1, progress_bar, f'Fitting predictors (0/{len(predictors)})...')
-            # for idx, (name, predictor) in enumerate(predictors.items()):
-            #     predictor.fit(X_holdout, y_holdout)
-            #     self.set_progress(0.4 + ((idx + 1) / len(predictors)) * 0.3, progress_bar, f'Fitting predictors ({idx + 1}/{len(predictors)})...')
+                # self.set_progress(0.4, progress_bar, 'Fitting predictors...')
+                # X_holdout, y_holdout = dataset.get_hold_out_data()
+                # self.set_progress(0.1, progress_bar, f'Fitting predictors (0/{len(predictors)})...')
+                # for idx, (name, predictor) in enumerate(predictors.items()):
+                #     predictor.fit(X_holdout, y_holdout)
+                #     self.set_progress(0.4 + ((idx + 1) / len(predictors)) * 0.3, progress_bar, f'Fitting predictors ({idx + 1}/{len(predictors)})...')
 
-            self.set_progress(0.5, progress_bar, f'Predicting (0/{len(predictors)})...')
-            X_test, y_test = dataset.get_test_data()
-            for idx, (name, predictor) in enumerate(predictors.items()):
-                self.set_progress(0.6 + (idx / len(predictors)) * 0.4, progress_bar,
-                                  f'Predicting {name} ({idx + 1}/{len(predictors)})...')
-                y_pred, y_pred_set = predictor.predict(X_test, alpha=self.alpha)
-                self.preds[name] = (
-                    y_pred,
-                    y_pred_set,
-                    classification_mean_width_score(y_pred_set[:, :, 0]),
-                    classification_coverage_score(y_test, y_pred_set[:, :, 0]),
-                )
+                self.set_progress(0.5, progress_bar, f'[Replication {rep+1}] Predicting (0/{len(predictors)})...')
+                X_test, y_test = dataset.get_test_data()
+
+                for idx, (name, predictor) in enumerate(predictors.items()):
+                    if name not in self.preds:
+                        self.preds[name] = []
+
+                    self.set_progress(0.6 + (idx / len(predictors)) * 0.4, progress_bar,
+                                      f'[Replication {rep+1}] Predicting {name} ({idx + 1}/{len(predictors)})...')
+                    y_pred, y_pred_set = predictor.predict(X_test, alpha=self.alpha)
+                    self.preds[name].append((
+                        y_pred,
+                        y_pred_set,
+                        classification_mean_width_score(y_pred_set[:, :, 0]),
+                        classification_coverage_score(y_test, y_pred_set[:, :, 0]),
+                    ))
         except:
             self.has_error = True
             raise
