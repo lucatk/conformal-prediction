@@ -24,6 +24,6 @@ class UnimodalHead(nn.Module):
         z = -torch.abs(r)  # z ∈ ℝ^K, unimodal due to symmetric log-probability decay
 
         # Step 5: Compute class probabilities: p̂_k = softmax(z_k)
-        probs = F.softmax(z, dim=1)  # p̂ ∈ Δ^K (K-dimensional simplex, unimodal distribution)
+        # probs = F.softmax(z, dim=1)  # p̂ ∈ Δ^K (K-dimensional simplex, unimodal distribution)
 
-        return probs
+        return z

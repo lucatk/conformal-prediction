@@ -158,6 +158,9 @@ class CPRunner:
             if score_alg == 'LAC':
                 from mapie.conformity_scores import LACConformityScore
                 score_algs.append(LACConformityScore())
+            elif score_alg == 'APS':
+                from mapie.conformity_scores import APSConformityScore
+                score_algs.append(APSConformityScore())
             elif score_alg == 'RAPS':
                 from mapie.conformity_scores import RAPSConformityScore
                 score_algs.append(RAPSConformityScore(size_raps=0.2))
