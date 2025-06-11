@@ -1,0 +1,23 @@
+# fly.toml app configuration file generated for conformal-prediction on 2025-06-11T12:41:25+02:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'conformal-prediction'
+primary_region = 'ord'
+vm.size = 'a100-40gb'
+
+[build]
+
+[http_service]
+  internal_port = 8501
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '16gb'
+  cpu_kind = 'performance'
+  cpus = 2

@@ -15,7 +15,7 @@ class UnimodalHead(nn.Module):
         eta = self.output(F.relu(self.hidden(x)))  # η ∈ ℝ^K — raw logits for each class
 
         # Step 2: Ensure all values are non-negative: v_k = φ(η_k), φ = softplus ensures v_k ≥ 0
-        v = F.softplus(eta)  # v ∈ ℝ_+^K
+        v = torch.abs(eta)  # v ∈ ℝ_+^K
 
         # Step 3: Generate cumulative sum: r_k = r_{k-1} + v_k (with r₁ = v₁)
         r = torch.cumsum(v, dim=1)  # r is non-decreasing over k

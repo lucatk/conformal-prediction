@@ -9,14 +9,14 @@ from matplotlib import pyplot as plt
 
 # -- PARAMETERS
 
-dataset_vals = ['FGNet', 'RetinaMNIST']
+dataset_vals = ['FGNet', 'Adience', 'RetinaMNIST']
 model_vals = ['resnet18', 'resnet18-uni', 'resnet50']
 evaluation_target_vals = ['score_algorithm', 'loss_fn']
 loss_fn_vals = ['CrossEntropy', 'TriangularCrossEntropy', 'WeightedKappa', 'EMD']
 score_alg_vals = ['LAC', 'APS', 'RAPS', 'RPS']
 
 # -- Streamlit Setup
-st.set_page_config(page_title='Conformal Prediction', layout='wide', page_icon=':leg:')
+st.set_page_config(page_title='Conformal Prediction', layout='wide', page_icon=':parking:')
 
 # Sidebar & File Initialisation for potential selection
 st.sidebar.write('Configuration')
@@ -92,9 +92,9 @@ def load_cp_runner(dataset, model, score_alg, loss_fn, alpha):
 
 
 @st.cache_resource
-def load_dataset(dataset, hold_out_size):
+def load_dataset(dataset):
     from datasets import loader
-    return loader.load_dataset(dataset, hold_out_size)
+    return loader.load_dataset(dataset)
 
 
 if param_dataset == '' or param_model == '' or param_score_alg == [] or param_loss_fn == []:
@@ -107,7 +107,7 @@ if not cp_runner.has_run:
     if cp_runner.progress is None:
         st.write('The results for these parameters have not been evaluated yet.')
         if st.button('Start evaluation'):
-            dataset = load_dataset(param_dataset, hold_out_size=param_hold_out_size)
+            dataset = load_dataset(param_dataset)
             progress_bar = st.progress(0, text='Evaluation in progress...')
             try:
                 cp_runner.run(dataset, param_replication, progress_bar)
@@ -176,13 +176,6 @@ for pred in predictor_names:
         pred_hists.append(hist)
     avg_hist = np.mean(np.stack(pred_hists), axis=0)
     hist_data.append(avg_hist)
-# hist_data = []
-# for pred in predictor_names:
-#     y_pred, y_pred_set, _, _ = results[pred][1]
-#     pred_set = y_pred_set[:, :, 0]  # Drop alpha dim
-#     set_sizes = np.sum(pred_set, axis=1)
-#     hist, _ = np.histogram(set_sizes, bins=np.arange(0.5, n_classes + 1.5))  # bin edges like 0.5, 1.5, ...
-#     hist_data.append(hist)
 
 # Plot grouped histogram
 bar_width = 0.8 / n_predictors

@@ -1,7 +1,0 @@
-CrossEntropy
-EMDLoss, WKLoss
-
-General Metrics
-https://mapie.readthedocs.io/en/stable/theoretical_description_metrics.html
-
-Ordinal non-conformity score --> Ranked Probability Score (RPS)

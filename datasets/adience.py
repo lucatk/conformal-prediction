@@ -1,17 +1,17 @@
 import numpy as np
-from dlordinal.datasets import FGNet
+from dlordinal.datasets import Adience
 from numpy import ndarray
 from torchvision.transforms import Compose, ToTensor
 
 from datasets.base_dataset import Dataset
 
 
-class FGNetDataset(Dataset):
+class AdienceDataset(Dataset):
     """
-    FGNet dataset.
+    Adience dataset.
     """
-    train_dataset: FGNet
-    test_dataset: FGNet
+    train_dataset: Adience
+    test_dataset: Adience
 
     X_train: ndarray
     y_train: ndarray
@@ -19,13 +19,13 @@ class FGNetDataset(Dataset):
     y_test: ndarray
 
     def __init__(self, root_path: str):
-        self.train_dataset = FGNet(
+        self.train_dataset = Adience(
             root=root_path,
             train=True,
             target_transform=np.array,
             transform=Compose([ToTensor()]),
         )
-        self.test_dataset = FGNet(
+        self.test_dataset = Adience(
             root=root_path,
             train=False,
             target_transform=np.array,
@@ -60,4 +60,4 @@ class FGNetDataset(Dataset):
         return len(self.train_dataset.classes)
 
     def get_class_labels(self) -> list[str]:
-        return ['0-6', '7-12', '13-19', '20-35', '36-50', '51-99']
+        return ['0-2', '4-6', '8-13', '15-20', '25-32', '38-43', '48-53', '60-100']
