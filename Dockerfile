@@ -4,12 +4,12 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
 
-
 RUN python -m venv .venv
 COPY requirements.txt ./
 RUN .venv/bin/pip install -r requirements.txt
-#FROM python:3.12.9-slim
-#WORKDIR /app
+
+FROM ubuntu/python:3.12-24.04_stable
+WORKDIR /app
 
 ENV ADIENCE_USER=adiencedb \
     ADIENCE_PASS=adience \
@@ -24,6 +24,6 @@ RUN mkdir -p /app/.datasets && cd /app/.datasets && \
     wget --user $ADIENCE_USER --password $ADIENCE_PASS $ADIENCE_URL/fold_4_data.txt && \
     wget --user $ADIENCE_USER --password $ADIENCE_PASS $ADIENCE_URL/aligned.tar.gz
 
-#COPY --from=builder /app/.venv .venv/
+COPY --from=builder /app/.venv .venv/
 COPY . .
 CMD ["/app/.venv/bin/streamlit", "run", "app.py"]
