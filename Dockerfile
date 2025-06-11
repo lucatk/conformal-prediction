@@ -5,7 +5,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 RUN apt-get update && \
-    apt-get install -y python3-pip python3-dev python-is-python3 && \
+    apt-get install -y python3-pip python3-dev python3-venv python-is-python3 && \
     rm -rf /var/lib/apt/lists/*
 
 #FROM nvidia/cuda:12.9.0-cudnn-runtime-ubuntu24.04
