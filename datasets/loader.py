@@ -3,7 +3,7 @@ from pathlib import Path
 from datasets.base_dataset import Dataset
 
 
-def load_dataset(dataset: str) -> Dataset:
+def load_dataset(dataset: str, root_path = '.') -> Dataset:
     """
     Load the dataset.
 
@@ -17,7 +17,7 @@ def load_dataset(dataset: str) -> Dataset:
     Dataset
         The loaded dataset.
     """
-    root_path = str(Path('.datasets').resolve())
+    root_path = str(Path(root_path + '/.datasets').resolve())
     if dataset == 'FGNet':
         from datasets.fgnet import FGNetDataset
         return FGNetDataset(root_path)
