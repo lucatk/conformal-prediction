@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -8,6 +10,8 @@ from util import frame_image_samples, st_narrow
 from matplotlib import pyplot as plt
 
 # -- PARAMETERS
+
+data_root = os.environ['DATA_ROOT'] if 'DATA_ROOT' in os.environ else '.'
 
 dataset_vals = ['FGNet', 'Adience', 'RetinaMNIST']
 model_vals = ['resnet18', 'resnet18-uni', 'resnet50']
@@ -94,7 +98,7 @@ def load_cp_runner(dataset, model, score_alg, loss_fn, alpha):
 @st.cache_resource
 def load_dataset(dataset):
     from datasets import loader
-    return loader.load_dataset(dataset)
+    return loader.load_dataset(dataset, data_root)
 
 
 if param_dataset == '' or param_model == '' or param_score_alg == [] or param_loss_fn == []:

@@ -16,6 +16,9 @@ primary_region = 'ord'
   min_machines_running = 0
   processes = ['app']
 
+[env]
+  DATA_ROOT = '/data'
+
 [[mounts]]
   source = "data"
   destination = "/data"
