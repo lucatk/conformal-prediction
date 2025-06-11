@@ -24,6 +24,6 @@ RUN mkdir -p /app/.datasets && cd /app/.datasets && \
     wget --user $ADIENCE_USER --password $ADIENCE_PASS $ADIENCE_URL/fold_4_data.txt && \
     wget --user $ADIENCE_USER --password $ADIENCE_PASS $ADIENCE_URL/aligned.tar.gz
 
-COPY --from=builder /app/.venv .venv/
+#COPY --from=builder /app/.venv .venv/
 COPY . .
 CMD ["/app/.venv/bin/streamlit", "run", "app.py"]
