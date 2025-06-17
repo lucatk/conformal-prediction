@@ -5,7 +5,8 @@ WORKDIR /workspace
 RUN apt-get update && apt-get install --no-install-recommends -y \
         build-essential \
         python3.12 \
-        python3-pip && \
+        python3-pip \
+        python-is-python3 && \
     	apt clean && rm -rf /var/lib/apt/lists/*
 
 RUN python -m venv .venv
