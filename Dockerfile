@@ -12,11 +12,11 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 
 RUN python -m venv .venv
 
-RUN .venv/bin/venv --no-cache-dir install torch torchvision torchaudio \
+RUN .venv/bin/pip --no-cache-dir install torch torchvision torchaudio \
         --index-url https://download.pytorch.org/whl/cu128
 
 COPY requirements.txt ./
-RUN .venv/bin/venv install -r requirements.txt
+RUN .venv/bin/pip install -r requirements.txt
 
 COPY . .
 
