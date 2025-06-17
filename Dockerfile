@@ -1,26 +1,19 @@
-FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime AS builder
-
-WORKDIR /tmp/build
-
-RUN #python -m venv .venv
-COPY requirements.txt ./
-RUN #.venv/bin/pip install -r requirements.txt
-
-RUN pip install --no-cache-dir --upgrade pip \
- && pip wheel --wheel-dir=/tmp/wheels -r requirements.txt
-
-FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
+FROM nvidia/cuda:12.8.0-base-ubuntu24.04
 
 WORKDIR /workspace
 
-COPY --from=builder /tmp/wheels /tmp/wheels
+RUN apt-get update && apt-get install --no-install-recommends -y \
+        build-essential \
+        python3.10 \
+        python3-pip && \
+    	apt clean && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 --no-cache-dir install torch torchvision torchaudio \
+        --index-url https://download.pytorch.org/whl/cu128
+
 COPY requirements.txt ./
+RUN pip3 install -r requirements.txt
 
-# Install from local wheels
-RUN pip install --no-cache-dir --no-index --find-links=/tmp/wheels -r requirements.txt \
- && rm -rf /tmp/wheels
-
-# Copy only what you need
 COPY . .
 
 CMD ["streamlit", "run", "app.py"]
