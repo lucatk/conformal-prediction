@@ -10,4 +10,4 @@ FROM python:3.11
 
 COPY --from=builder /workspace/.venv .venv/
 COPY . .
-CMD ["/app/.venv/bin/streamlit", "run", "app.py"]
+CMD ["/workspace/.venv/bin/streamlit", "run", "app.py"]
