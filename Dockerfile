@@ -4,7 +4,7 @@ WORKDIR /workspace
 
 RUN apt-get update && apt-get install --no-install-recommends -y \
         build-essential \
-        python3.10 \
+        python3.12 \
         python3-pip && \
     	apt clean && rm -rf /var/lib/apt/lists/*
 
