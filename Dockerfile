@@ -8,6 +8,9 @@ RUN .venv/bin/pip install -r requirements.txt
 
 FROM python:3.11
 
+WORKDIR /workspace
+
 COPY --from=builder /workspace/.venv .venv/
 COPY . .
+
 CMD ["/workspace/.venv/bin/streamlit", "run", "app.py"]
