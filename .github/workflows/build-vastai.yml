@@ -1,4 +1,4 @@
-name: Build vastai docker image and push to GitHub Packages
+name: Build VastAI Docker Image
 
 on:
   push:
@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
       - name: Log in to the Container registry
         uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
         with:
