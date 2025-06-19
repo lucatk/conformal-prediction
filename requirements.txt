@@ -5,11 +5,16 @@ pandas==2.2.3
 scikit-learn==1.5.2
 skorch==1.1.0
 streamlit==1.44.1
-torch==2.7.0
 tornado==6.4.2
 watchdog==6.0.0
 matplotlib==3.10.1
 medmnist==3.0.2
-torchvision==0.22.0
 pillow~=11.2.1
 highlight_text==0.2
+
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.7.0+cu128; sys_platform == "linux"
+torchvision==0.22.0+cu128; sys_platform == "linux"
+
+torch==2.7.0; sys_platform == "darwin"
+torchvision==0.22.0; sys_platform == "darwin"
