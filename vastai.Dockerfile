@@ -10,4 +10,4 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-CMD ["streamlit", "run", "/opt/workspace-internal/app.py"]
+#CMD ["streamlit", "run", "/opt/workspace-internal/app.py"]
