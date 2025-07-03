@@ -1,5 +1,4 @@
 from mapie.classification import MapieClassifier
-from mapie.metrics import classification_coverage_score, classification_mean_width_score
 from numpy import ndarray
 from sklearn.base import ClassifierMixin
 from skorch.callbacks import Callback
@@ -22,7 +21,7 @@ class CPRunner:
     has_error: bool = False
 
     dataset: Dataset
-    preds: dict[str, list[tuple[ndarray, ndarray, float, float]]] = {}
+    preds: dict[str, list[tuple[ndarray, ndarray]]] = {}
 
     def __init__(self, dataset_name: str, model: str, score_alg: list[str], loss_fn: list[str], alpha: float,
                  device: str):
@@ -66,13 +65,6 @@ class CPRunner:
                     predictor.estimator.set_params(callbacks=[('epoch_progress', EpochProgress(self))])
                     predictor.fit(X_train, y_train)
 
-                # self.set_progress(0.4, progress_bar, 'Fitting predictors...')
-                # X_holdout, y_holdout = dataset.get_hold_out_data()
-                # self.set_progress(0.1, progress_bar, f'Fitting predictors (0/{len(predictors)})...')
-                # for idx, (name, predictor) in enumerate(predictors.items()):
-                #     predictor.fit(X_holdout, y_holdout)
-                #     self.set_progress(0.4 + ((idx + 1) / len(predictors)) * 0.3, progress_bar, f'Fitting predictors ({idx + 1}/{len(predictors)})...')
-
                 self.set_progress(0.5, progress_bar, f'[Replication {rep+1}] Predicting (0/{len(predictors)})...')
                 X_test, y_test = dataset.get_test_data()
 
@@ -83,12 +75,7 @@ class CPRunner:
                     self.set_progress(0.6 + (idx / len(predictors)) * 0.4, progress_bar,
                                       f'[Replication {rep+1}] Predicting {name} ({idx + 1}/{len(predictors)})...')
                     y_pred, y_pred_set = predictor.predict(X_test, alpha=self.alpha)
-                    self.preds[name].append((
-                        y_pred,
-                        y_pred_set,
-                        classification_mean_width_score(y_pred_set[:, :, 0]),
-                        classification_coverage_score(y_test, y_pred_set[:, :, 0]),
-                    ))
+                    self.preds[name].append((y_pred, y_pred_set))
         except:
             self.has_error = True
             raise
