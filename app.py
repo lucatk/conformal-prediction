@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 import torch
 
-from metrics import get_metrics, get_metrics_across_reps
+from metrics import get_metrics_across_reps
 from util import frame_image_samples, st_narrow
 from matplotlib import pyplot as plt
 
@@ -15,7 +15,6 @@ data_root = os.environ['DATA_ROOT'] if 'DATA_ROOT' in os.environ else '.'
 
 dataset_vals = ['FGNet', 'Adience', 'RetinaMNIST']
 model_vals = ['resnet18', 'resnet18-uni', 'resnet50']
-evaluation_target_vals = ['score_algorithm', 'loss_fn']
 loss_fn_vals = ['CrossEntropy', 'TriangularCrossEntropy', 'WeightedKappa', 'EMD']
 score_alg_vals = ['LAC', 'APS', 'RAPS', 'RPS']
 
@@ -33,30 +32,15 @@ param_model = st.sidebar.selectbox(
     'Model',
     model_vals,
 )
-param_evaluation_target = st.sidebar.segmented_control('Evaluation target', evaluation_target_vals, selection_mode='single',
-                                                       default=evaluation_target_vals[0])
 
-param_loss_fn: list[str] = []
-param_score_alg: list[str] = []
-
-if param_evaluation_target == 'score_algorithm':
-    param_loss_fn = [st.sidebar.selectbox(
-        'Loss function',
-        loss_fn_vals,
-    )]
-    param_score_alg = st.sidebar.multiselect(
-        'Score algorithm',
-        score_alg_vals,
-    )
-elif param_evaluation_target == 'loss_fn':
-    param_loss_fn = st.sidebar.multiselect(
-        'Loss function',
-        loss_fn_vals,
-    )
-    param_score_alg = [st.sidebar.selectbox(
-        'Score algorithm',
-        score_alg_vals,
-    )]
+param_score_alg = st.sidebar.multiselect(
+    'Score algorithm',
+    score_alg_vals,
+)
+param_loss_fn = st.sidebar.multiselect(
+    'Loss function',
+    loss_fn_vals,
+)
 param_hold_out_size = st.sidebar.slider(
     'Hold out size',
     min_value=0.0,
@@ -82,7 +66,7 @@ param_replication = st.sidebar.slider(
 torch.classes.__path__ = []
 
 
-@st.cache_resource
+@st.cache_resource(hash_funcs={list[str]: lambda l: hash(frozenset(l))})
 def load_cp_runner(dataset, model, score_alg, loss_fn, alpha):
     from cp_runner import CPRunner
     return CPRunner(

@@ -1,5 +1,3 @@
-import copy
-
 from mapie.classification import MapieClassifier
 from mapie.metrics import classification_coverage_score, classification_mean_width_score
 from numpy import ndarray
@@ -8,7 +6,7 @@ from skorch.callbacks import Callback
 from streamlit.elements.progress import ProgressMixin
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from torch.optim import Adam, AdamW
+from torch.optim import AdamW
 from torchvision import models
 
 from datasets.base_dataset import Dataset
