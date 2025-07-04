@@ -1,3 +1,4 @@
+import pickle
 from mapie.classification import MapieClassifier
 from numpy import ndarray
 from sklearn.base import ClassifierMixin
@@ -31,6 +32,48 @@ class CPRunner:
         self.loss_fn = loss_fn
         self.alpha = alpha
         self.device = device
+
+    def save_results_bytes(self):
+        """Save results and metadata as bytes."""
+        if not self.has_run:
+            raise RuntimeError("CPRunner has not been run yet. No results to save.")
+        
+        # Save both results and metadata
+        save_data = {
+            'dataset_name': self.dataset_name,
+            'model': self.model,
+            'score_alg': self.score_alg,
+            'loss_fn': self.loss_fn,
+            'alpha': self.alpha,
+            'device': self.device,
+            'preds': self.preds,
+            'has_run': self.has_run,
+            'has_error': self.has_error
+        }
+        
+        return pickle.dumps(save_data)
+
+    @staticmethod
+    def from_bytes(data_bytes: bytes):
+        """Create a new CPRunner instance from saved bytes."""
+        save_data = pickle.loads(data_bytes)
+        
+        # Create new instance with saved metadata
+        cp_runner = CPRunner(
+            dataset_name=save_data['dataset_name'],
+            model=save_data['model'],
+            score_alg=save_data['score_alg'],
+            loss_fn=save_data['loss_fn'],
+            alpha=save_data['alpha'],
+            device=save_data['device']
+        )
+        
+        # Restore the results
+        cp_runner.preds = save_data['preds']
+        cp_runner.has_run = save_data['has_run']
+        cp_runner.has_error = save_data['has_error']
+        
+        return cp_runner
 
     def run(self, dataset: Dataset, num_replications: int, progress_bar: ProgressMixin):
         if self.has_run or (self.progress is not None and not self.has_error):

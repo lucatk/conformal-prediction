@@ -91,11 +91,58 @@ def load_dataset(dataset):
     return loader.load_dataset(dataset, data_root)
 
 
-if param_dataset == '' or param_model == '' or param_score_alg == [] or param_loss_fn == []:
-    st.warning('Please input all parameters.')
-    st.stop()
+# Import/Export Section
+st.sidebar.write('---')
 
-cp_runner = load_cp_runner(param_dataset, param_model, param_score_alg, param_loss_fn, param_alpha)
+cp_runner = None
+
+# Import button
+uploaded_file = st.sidebar.file_uploader(
+    "Import Results",
+    type=['pkl'],
+    help='Upload a saved results file (.pkl)'
+)
+
+if uploaded_file is not None:
+    try:
+        # Create a new CPRunner instance from the uploaded file
+        from cp_runner import CPRunner
+        cp_runner = CPRunner.from_bytes(uploaded_file.getbuffer())
+        
+        # Load the dataset for the imported results
+        dataset = load_dataset(cp_runner.dataset_name)
+        cp_runner.dataset = dataset
+        
+        st.sidebar.success(f"✅ Imported results from {uploaded_file.name}")
+    except Exception as e:
+        st.sidebar.error(f"❌ Error importing results: {str(e)}")
+        cp_runner = None
+
+# If no import, create CPRunner normally
+if cp_runner is None:
+    # Parameter validation
+    if param_dataset == '' or param_model == '' or param_score_alg == [] or param_loss_fn == []:
+        st.warning('Please input all parameters.')
+        st.stop()
+    cp_runner = load_cp_runner(param_dataset, param_model, param_score_alg, param_loss_fn, param_alpha)
+
+# Export button (enabled if results exist)
+if cp_runner.has_run and not cp_runner.has_error:
+    # Create filename for download
+    score_alg_str = "_".join(cp_runner.score_alg)
+    loss_fn_str = "_".join(cp_runner.loss_fn)
+    filename = f"results_{cp_runner.dataset_name}_{cp_runner.model}_{score_alg_str}_{loss_fn_str}_alpha{cp_runner.alpha}.pkl"
+    
+    # Get results as bytes
+    file_data = cp_runner.save_results_bytes()
+    
+    st.sidebar.download_button(
+        label="Export Results",
+        data=file_data,
+        file_name=filename,
+        mime="application/octet-stream",
+        help='Download current results as .pkl file'
+    )
 
 if not cp_runner.has_run:
     if cp_runner.progress is None:
