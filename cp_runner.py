@@ -15,17 +15,15 @@ from util import SoftmaxNeuralNetClassifier
 
 
 class CPRunner:
-    max_epochs = 25
-
-    progress: float | None = None
-    has_run: bool = False
-    has_error: bool = False
-
-    dataset: Dataset
-    preds: dict[str, list[tuple[ndarray, ndarray]]] = {}
+    max_epochs = 3
 
     def __init__(self, dataset_name: str, model: str, score_alg: list[str], loss_fn: list[str], alpha: float,
                  device: str):
+        self.progress: float | None = None
+        self.has_run: bool = False
+        self.has_error: bool = False
+        self.preds: dict[str, list[tuple[ndarray, ndarray]]] = {}
+
         self.dataset_name = dataset_name
         self.model = model
         self.score_alg = score_alg

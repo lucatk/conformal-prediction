@@ -189,15 +189,16 @@ for name, pred_results in results.items():
 df = pd.DataFrame(metrics_data)
 
 # Create performance score and sort by it
+# Normalize metrics to 0-1 range and combine them
 df['performance_score'] = (
-    df['coverage'] -  # Higher is better
-    df['mean_width'] -  # Lower is better, so subtract
-    df['non_contiguous_percentage']  # Lower is better, so subtract
-)
+    df['coverage'] +  # Higher is better (already 0-1)
+    (1 - df['mean_width'] / df['mean_width'].max()) +  # Normalize mean_width to 0-1, lower is better
+    (1 - df['non_contiguous_percentage'])  # Non-contiguous % to 0-1, lower is better
+) / 3  # Average of the three normalized metrics
 df = df.sort_values('performance_score', ascending=False)
 
 # Round performance score for display
-df['performance_score'] = df['performance_score'].round(3)
+df['performance_score'] = df['performance_score'].round(5)
 
 st.dataframe(
     df,
@@ -213,7 +214,8 @@ st.dataframe(
         'mae': st.column_config.NumberColumn('MAE', format='%.3f', help='Mean Absolute Error'),
         'non_contiguous_percentage': st.column_config.NumberColumn('Non-contiguous %', format='%.3f', help='Percentage of Non-Contiguous Prediction Sets'),
         'performance_score': st.column_config.NumberColumn('Performance Score', format='%.3f', help='Overall performance score (higher is better)'),
-    }
+    },
+    hide_index=True,
 )
 
 # Overall Performance Comparison
@@ -223,10 +225,10 @@ st.subheader('Overall Performance Comparison')
 # Higher coverage is better, lower mean_width is better, lower non_contiguous_percentage is better
 df_performance = df.copy()
 df_performance['performance_score'] = (
-    df_performance['coverage'] -  # Higher is better
-    df_performance['mean_width'] -  # Lower is better, so subtract
-    df_performance['non_contiguous_percentage']  # Lower is better, so subtract
-)
+    df_performance['coverage'] +  # Higher is better (already 0-1)
+    (1 - df_performance['mean_width'] / df_performance['mean_width'].max()) +  # Normalize mean_width to 0-1, lower is better
+    (1 - df_performance['non_contiguous_percentage'])  # Non-contiguous % to 0-1, lower is better
+) / 3  # Average of the three normalized metrics
 
 # Sort by performance score (descending)
 df_performance = df_performance.sort_values('performance_score', ascending=False)

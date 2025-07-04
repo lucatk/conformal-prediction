@@ -45,7 +45,9 @@ def plot_overall_performance_comparison(df_performance, param_alpha):
 
     # X axis
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([f"{row['loss_fn']}_{row['score_alg']}" for _, row in df_performance.iterrows()], rotation=45, ha='right', fontsize=12)
+    # Compose two-line labels: method name and score
+    xtick_labels = [f"{row['loss_fn']}_{row['score_alg']}\nScore: {row['performance_score']:.3f}" for _, row in df_performance.iterrows()]
+    ax.set_xticklabels(xtick_labels, rotation=45, ha='right', fontsize=12)
     ax.set_ylim(0, 1)
 
     # Legends
@@ -55,12 +57,6 @@ def plot_overall_performance_comparison(df_performance, param_alpha):
 
     ax.set_title('Overall Performance Comparison\n(Methods ordered by: max coverage, min mean width, min non-contiguous %)', fontsize=16)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
-
-    # Add performance scores as text annotations
-    for i, (_, row) in enumerate(df_performance.iterrows()):
-        ax.annotate(f'Score: {row["performance_score"]:.2f}',
-                    xy=(i, row['coverage']), xytext=(5, 5),
-                    textcoords='offset points', fontsize=10, alpha=0.7)
 
     plt.tight_layout()
     return fig
