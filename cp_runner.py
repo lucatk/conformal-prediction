@@ -15,9 +15,9 @@ from util import SoftmaxNeuralNetClassifier
 
 
 class CPRunner:
-    max_epochs = 3
+    max_epochs = 25
 
-    def __init__(self, dataset_name: str, model: str, score_alg: list[str], loss_fn: list[str], alpha: float,
+    def __init__(self, dataset_name: str, model: list[str], score_alg: list[str], loss_fn: list[str], alpha: float,
                  device: str):
         self.progress: float | None = None
         self.has_run: bool = False
@@ -126,26 +126,30 @@ class CPRunner:
         self.progress = progress
         progress_bar.progress(progress, text=text)
 
-    def _get_model(self, num_classes: int):
-        if self.model == 'resnet18':
-            model = models.resnet18(weights="IMAGENET1K_V1")
-            model.fc = nn.Linear(model.fc.in_features, num_classes)
-        elif self.model == 'resnet50':
-            model = models.resnet50(weights="IMAGENET1K_V1")
-            model.fc = nn.Linear(model.fc.in_features, num_classes)
-        elif self.model == 'resnet18-uni':
-            model = UnimodalResNet18(num_classes)
-        else:
-            raise ValueError(f"Unknown model: {self.model}")
-        return model
+    def _get_model_set(self, num_classes: int):
+        models_list = []
+        for model_name in self.model:
+            if model_name == 'resnet18':
+                model = models.resnet18(weights="IMAGENET1K_V1")
+                model.fc = nn.Linear(model.fc.in_features, num_classes)
+            elif model_name == 'resnet50':
+                model = models.resnet50(weights="IMAGENET1K_V1")
+                model.fc = nn.Linear(model.fc.in_features, num_classes)
+            elif model_name == 'resnet18-uni':
+                model = UnimodalResNet18(num_classes)
+            else:
+                raise ValueError(f"Unknown model: {model_name}")
+            models_list.append(model)
+        return models_list
 
     def _get_estimators(self, num_classes: int):
-        model = self._get_model(num_classes)
-        model = model.to(self.device)
+        model_set = self._get_model_set(num_classes)
         loss_fn_set = self._get_loss_fn_set(num_classes)
         return [(
+            model_idx,
+            loss_fn_idx,
             SoftmaxNeuralNetClassifier(
-                module=model,
+                module=model.to(self.device),
                 criterion=loss_fn.to(self.device),
                 optimizer=AdamW,
                 lr=1e-3,
@@ -154,7 +158,8 @@ class CPRunner:
                 max_epochs=self.max_epochs,
                 device=self.device,
             )
-        ) for loss_fn in loss_fn_set]
+        ) for model_idx, model in enumerate(model_set)
+        for loss_fn_idx, loss_fn in enumerate(loss_fn_set)]
 
     def _get_loss_fn_set(self, num_classes: int):
         loss_fns = []
@@ -197,17 +202,17 @@ class CPRunner:
                 raise ValueError(f"Unknown score algorithm: {score_alg}")
         return score_algs
 
-    def _get_cp_predictors(self, estimators: list[ClassifierMixin]):
+    def _get_cp_predictors(self, estimators: list[tuple[int, int, ClassifierMixin]]):
         score_algs = self._get_score_alg_set()
         return {
-            f'{self.loss_fn[loss_fn_idx]}_{self.score_alg[score_alg_idx]}': (
+            f'{self.model[model_idx]}_{self.loss_fn[loss_fn_idx]}_{self.score_alg[score_alg_idx]}': (
                 MapieClassifier(
                     estimator=estimator,
                     conformity_score=score_alg,
                     cv='split',
                 )
             )
-            for loss_fn_idx, estimator in enumerate(estimators)
+            for model_idx, loss_fn_idx, estimator in estimators
             for score_alg_idx, score_alg in enumerate(score_algs)
         }
 

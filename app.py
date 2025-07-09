@@ -34,7 +34,7 @@ param_dataset = st.sidebar.selectbox(
     'Dataset',
     dataset_vals,
 )
-param_model = st.sidebar.selectbox(
+param_model = st.sidebar.multiselect(
     'Model',
     model_vals,
 )
@@ -121,7 +121,7 @@ if uploaded_file is not None:
 # If no import, create CPRunner normally
 if cp_runner is None:
     # Parameter validation
-    if param_dataset == '' or param_model == '' or param_score_alg == [] or param_loss_fn == []:
+    if param_dataset == '' or param_model == [] or param_score_alg == [] or param_loss_fn == []:
         st.warning('Please input all parameters.')
         st.stop()
     cp_runner = load_cp_runner(param_dataset, param_model, param_score_alg, param_loss_fn, param_alpha)
@@ -179,8 +179,9 @@ results = cp_runner.get_results()
 metrics_data = []
 for name, pred_results in results.items():
     metrics = get_metrics_across_reps(y_test, pred_results)
-    loss_fn, score_alg = name.split('_', 1)
+    model, loss_fn, score_alg = name.split('_', 2)
     metrics_data.append({
+        'model': model,
         'loss_fn': loss_fn,
         'score_alg': score_alg,
         **metrics._asdict()
@@ -203,6 +204,7 @@ df['performance_score'] = df['performance_score'].round(5)
 st.dataframe(
     df,
     column_config={
+        'model': st.column_config.TextColumn('Model', pinned=True),
         'loss_fn': st.column_config.TextColumn('Loss Function', pinned=True),
         'score_alg': st.column_config.TextColumn('Score Algorithm', pinned=True),
         'coverage': st.column_config.NumberColumn('Coverage', format='%.3f', help='Classification Coverage Score (target: 1-α)'),

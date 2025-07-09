@@ -46,7 +46,7 @@ def plot_overall_performance_comparison(df_performance, param_alpha):
     # X axis
     ax.set_xticks(x_pos)
     # Compose two-line labels: method name and score
-    xtick_labels = [f"{row['loss_fn']}_{row['score_alg']}\nScore: {row['performance_score']:.3f}" for _, row in df_performance.iterrows()]
+    xtick_labels = [f"{row['model']}_{row['loss_fn']}_{row['score_alg']}\nScore: {row['performance_score']:.3f}" for _, row in df_performance.iterrows()]
     ax.set_xticklabels(xtick_labels, rotation=45, ha='right', fontsize=12)
     ax.set_ylim(0, 1)
 
@@ -72,7 +72,7 @@ def plot_classification_mean_width_score(df):
     ax.set_ylabel('Mean Prediction Set Size', fontsize=12)
     ax.set_title('Classification Mean Width Score (CMWS)', fontsize=14)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([f"{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
+    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
@@ -90,7 +90,7 @@ def plot_regression_mean_width_score(df):
     ax.set_ylabel('Mean Interval Size/Range', fontsize=12)
     ax.set_title('Regression Mean Width Score (RMWS)', fontsize=14)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([f"{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
+    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
@@ -109,7 +109,7 @@ def plot_classification_coverage_score(df, param_alpha):
     ax.set_ylabel('Coverage', fontsize=12)
     ax.set_title('Classification Coverage Score (CCS)', fontsize=14)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([f"{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
+    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
     ax.tick_params(axis='y', labelsize=10)
     ax.legend(fontsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
@@ -128,7 +128,7 @@ def plot_non_contiguous_prediction_sets(df):
     ax.set_ylabel('Non-contiguous Sets (ratio)', fontsize=12)
     ax.set_title('Non-contiguous Prediction Sets', fontsize=14)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([f"{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
+    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
@@ -207,7 +207,7 @@ def plot_classification_accuracy(df):
     ax.set_ylabel('Accuracy', fontsize=12)
     ax.set_title('Classification Accuracy', fontsize=14)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([f"{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
+    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
