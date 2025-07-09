@@ -54,12 +54,11 @@ param_hold_out_size = st.sidebar.slider(
     value=0.2,
     step=0.01,
 )
-param_alpha = st.sidebar.slider(
+alpha_presets = [0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.25]
+param_alpha = st.sidebar.multiselect(
     'Alpha',
-    min_value=0.0,
-    max_value=1.0,
-    value=0.2,
-    step=0.01,
+    alpha_presets,
+    default=[0.2],
 )
 param_replication = st.sidebar.slider(
     'Replication',
@@ -179,11 +178,18 @@ results = cp_runner.get_results()
 metrics_data = []
 for name, pred_results in results.items():
     metrics = get_metrics_across_reps(y_test, pred_results)
-    model, loss_fn, score_alg = name.split('_', 2)
+    # Parse the format: model_loss_fn_score_alg_alphaX.XX
+    alpha_part = name.split('_alpha')[-1]
+    base_name = name.replace(f'_alpha{alpha_part}', '')
+    parts = base_name.split('_', 2)
+    model, loss_fn, score_alg = parts[0], parts[1], parts[2]
+    alpha = float(alpha_part)
+    
     metrics_data.append({
         'model': model,
         'loss_fn': loss_fn,
         'score_alg': score_alg,
+        'alpha': alpha,
         **metrics._asdict()
     })
 
@@ -196,7 +202,7 @@ df['performance_score'] = (
     (1 - df['mean_width'] / df['mean_width'].max()) +  # Normalize mean_width to 0-1, lower is better
     (1 - df['non_contiguous_percentage'])  # Non-contiguous % to 0-1, lower is better
 ) / 3  # Average of the three normalized metrics
-df = df.sort_values('performance_score', ascending=False)
+df = df.sort_values(['alpha', 'performance_score'], ascending=[True, False])
 
 # Round performance score for display
 df['performance_score'] = df['performance_score'].round(5)
@@ -207,6 +213,7 @@ st.dataframe(
         'model': st.column_config.TextColumn('Model', pinned=True),
         'loss_fn': st.column_config.TextColumn('Loss Function', pinned=True),
         'score_alg': st.column_config.TextColumn('Score Algorithm', pinned=True),
+        'alpha': st.column_config.NumberColumn('Alpha', format='%.2f', help='Significance level (1-α is target coverage)'),
         'coverage': st.column_config.NumberColumn('Coverage', format='%.3f', help='Classification Coverage Score (target: 1-α)'),
         'mean_width': st.column_config.NumberColumn('Mean Width', format='%.3f', help='Classification Mean Width Score'),
         'mean_range': st.column_config.NumberColumn('Mean Range', format='%.3f', help='Mean Interval Range (Regression Mean Width Score)'),
@@ -232,8 +239,8 @@ df_performance['performance_score'] = (
     (1 - df_performance['non_contiguous_percentage'])  # Non-contiguous % to 0-1, lower is better
 ) / 3  # Average of the three normalized metrics
 
-# Sort by performance score (descending)
-df_performance = df_performance.sort_values('performance_score', ascending=False)
+# Sort by alpha first, then by performance score (descending)
+df_performance = df_performance.sort_values(['alpha', 'performance_score'], ascending=[True, False])
 
 # Create the comparison plot with dual y-axes
 fig_overall = plot_overall_performance_comparison(df_performance, param_alpha)

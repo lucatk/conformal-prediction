@@ -23,7 +23,6 @@ def plot_overall_performance_comparison(df_performance, param_alpha):
 
     # Plot coverage (left)
     p1, = ax.plot(x_pos, df_performance['coverage'], color='green', marker='o', label='Coverage', linewidth=2, markersize=8)
-    ax.axhline(y=1-param_alpha, color='green', linestyle='--', alpha=0.7, label=f'Target Coverage (1-α = {1-param_alpha:.2f})')
 
     # Plot mean width (right)
     p2, = ax_mw.plot(x_pos, df_performance['mean_width'], color='purple', marker='s', label='Mean Width', linewidth=2, markersize=8)
@@ -32,11 +31,14 @@ def plot_overall_performance_comparison(df_performance, param_alpha):
     p3, = ax_nc.plot(x_pos, df_performance['non_contiguous_percentage'], color='red', marker='^', label='Non-contiguous %', linewidth=2, markersize=8)
     ax_nc.set_ylim(1, 0)  # Invert so smaller is better at top
 
+    # Plot alpha values (far right, normal scale)
+    p4, = ax_nc.plot(x_pos, df_performance['alpha'], color='orange', marker='d', label='Alpha', linewidth=2, markersize=8)
+
     # Axis labels
     ax.set_xlabel('Methods (ordered by performance)', fontsize=14)
     ax.set_ylabel('Coverage', color='green', fontsize=14)
     ax_mw.set_ylabel('Mean Width', color='purple', fontsize=14)
-    ax_nc.set_ylabel('Non-contiguous %', color='red', fontsize=14)
+    ax_nc.set_ylabel('Non-contiguous % / Alpha', color='red', fontsize=14)
 
     # Axis colors
     ax.tick_params(axis='y', labelcolor='green', labelsize=12)
@@ -46,12 +48,12 @@ def plot_overall_performance_comparison(df_performance, param_alpha):
     # X axis
     ax.set_xticks(x_pos)
     # Compose two-line labels: method name and score
-    xtick_labels = [f"{row['model']}_{row['loss_fn']}_{row['score_alg']}\nScore: {row['performance_score']:.3f}" for _, row in df_performance.iterrows()]
+    xtick_labels = [f"{row['model']}_{row['loss_fn']}_{row['score_alg']}_alpha{row['alpha']:.2f}\nScore: {row['performance_score']:.3f}" for _, row in df_performance.iterrows()]
     ax.set_xticklabels(xtick_labels, rotation=45, ha='right', fontsize=12)
     ax.set_ylim(0, 1)
 
     # Legends
-    lines = [p1, p2, p3]
+    lines = [p1, p2, p3, p4]
     labels = [l.get_label() for l in lines]
     ax.legend(lines, labels, loc='upper right', fontsize=12)
 
@@ -72,7 +74,7 @@ def plot_classification_mean_width_score(df):
     ax.set_ylabel('Mean Prediction Set Size', fontsize=12)
     ax.set_title('Classification Mean Width Score (CMWS)', fontsize=14)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
+    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}_alpha{row['alpha']:.2f}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
@@ -90,7 +92,7 @@ def plot_regression_mean_width_score(df):
     ax.set_ylabel('Mean Interval Size/Range', fontsize=12)
     ax.set_title('Regression Mean Width Score (RMWS)', fontsize=14)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
+    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}_alpha{row['alpha']:.2f}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
@@ -104,12 +106,17 @@ def plot_classification_coverage_score(df, param_alpha):
     x_pos = np.arange(len(df))
     
     ax.bar(x_pos, df['coverage'], alpha=0.7, color='green')
-    ax.axhline(y=1-param_alpha, color='green', linestyle='--', label=f'Target Coverage (1-α = {1-param_alpha:.2f})')
+    # Use the first alpha value for the target line, or calculate average if multiple
+    if isinstance(param_alpha, list):
+        target_alpha = sum(param_alpha) / len(param_alpha) if param_alpha else 0.2
+    else:
+        target_alpha = param_alpha
+    ax.axhline(y=1-target_alpha, color='green', linestyle='--', label=f'Target Coverage (1-α = {1-target_alpha:.2f})')
     ax.set_xlabel('Methods', fontsize=12)
     ax.set_ylabel('Coverage', fontsize=12)
     ax.set_title('Classification Coverage Score (CCS)', fontsize=14)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
+    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}_alpha{row['alpha']:.2f}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
     ax.tick_params(axis='y', labelsize=10)
     ax.legend(fontsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
@@ -128,7 +135,7 @@ def plot_non_contiguous_prediction_sets(df):
     ax.set_ylabel('Non-contiguous Sets (ratio)', fontsize=12)
     ax.set_title('Non-contiguous Prediction Sets', fontsize=14)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
+    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}_alpha{row['alpha']:.2f}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
@@ -188,8 +195,13 @@ def plot_size_stratified_coverage(results, y_test, param_alpha):
     ax.set_xticks(x_pos)
     ax.set_xticklabels(all_sizes, fontsize=10)
     ax.tick_params(axis='y', labelsize=10)
-    ax.axhline(y=1-param_alpha, color='green', linestyle='--', 
-                label=f'Target Coverage (1-α = {1-param_alpha:.2f})')
+    # Use the first alpha value for the target line, or calculate average if multiple
+    if isinstance(param_alpha, list):
+        target_alpha = sum(param_alpha) / len(param_alpha) if param_alpha else 0.2
+    else:
+        target_alpha = param_alpha
+    ax.axhline(y=1-target_alpha, color='green', linestyle='--', 
+                label=f'Target Coverage (1-α = {1-target_alpha:.2f})')
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
@@ -207,7 +219,7 @@ def plot_classification_accuracy(df):
     ax.set_ylabel('Accuracy', fontsize=12)
     ax.set_title('Classification Accuracy', fontsize=14)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
+    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}_alpha{row['alpha']:.2f}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
@@ -225,7 +237,7 @@ def plot_mean_absolute_error(df):
     ax.set_ylabel('Mean Absolute Error', fontsize=12)
     ax.set_title('Mean Absolute Error (MAE)', fontsize=14)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([f"{row['loss_fn']}_{row['score_alg']}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
+    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}_alpha{row['alpha']:.2f}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()

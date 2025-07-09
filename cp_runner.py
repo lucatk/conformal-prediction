@@ -17,7 +17,7 @@ from util import SoftmaxNeuralNetClassifier
 class CPRunner:
     max_epochs = 25
 
-    def __init__(self, dataset_name: str, model: list[str], score_alg: list[str], loss_fn: list[str], alpha: float,
+    def __init__(self, dataset_name: str, model: list[str], score_alg: list[str], loss_fn: list[str], alpha: list[float],
                  device: str):
         self.progress: float | None = None
         self.has_run: bool = False
@@ -89,7 +89,7 @@ class CPRunner:
                 X_train, y_train = dataset.get_train_data()
                 print("X_train shape:", X_train.shape)
                 print("y_train shape:", y_train.shape)
-                for idx, (name, predictor) in enumerate(predictors.items()):
+                for idx, (name, (_, predictor)) in enumerate(predictors.items()):
                     self.set_progress(0.1 + (idx / len(predictors)) * 0.4, progress_bar,
                                       f'[Replication {rep+1}] Fitting {name} ({idx + 1}/{len(predictors)})...')
 
@@ -109,13 +109,13 @@ class CPRunner:
                 self.set_progress(0.5, progress_bar, f'[Replication {rep+1}] Predicting (0/{len(predictors)})...')
                 X_test, y_test = dataset.get_test_data()
 
-                for idx, (name, predictor) in enumerate(predictors.items()):
+                for idx, (name, (alpha, predictor)) in enumerate(predictors.items()):
                     if name not in self.preds:
                         self.preds[name] = []
-
+                    
                     self.set_progress(0.6 + (idx / len(predictors)) * 0.4, progress_bar,
                                       f'[Replication {rep+1}] Predicting {name} ({idx + 1}/{len(predictors)})...')
-                    y_pred, y_pred_set = predictor.predict(X_test, alpha=self.alpha)
+                    y_pred, y_pred_set = predictor.predict(X_test, alpha=alpha)
                     self.preds[name].append((y_pred, y_pred_set))
         except:
             self.has_error = True
@@ -205,7 +205,8 @@ class CPRunner:
     def _get_cp_predictors(self, estimators: list[tuple[int, int, ClassifierMixin]]):
         score_algs = self._get_score_alg_set()
         return {
-            f'{self.model[model_idx]}_{self.loss_fn[loss_fn_idx]}_{self.score_alg[score_alg_idx]}': (
+            f'{self.model[model_idx]}_{self.loss_fn[loss_fn_idx]}_{self.score_alg[score_alg_idx]}_alpha{alpha:.2f}': (
+                alpha,
                 MapieClassifier(
                     estimator=estimator,
                     conformity_score=score_alg,
@@ -214,6 +215,7 @@ class CPRunner:
             )
             for model_idx, loss_fn_idx, estimator in estimators
             for score_alg_idx, score_alg in enumerate(score_algs)
+            for alpha in self.alpha
         }
 
     def get_results(self):
