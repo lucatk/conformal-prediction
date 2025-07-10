@@ -23,22 +23,26 @@ def plot_overall_performance_comparison(df_performance, param_alpha):
 
     # Plot coverage (left)
     p1, = ax.plot(x_pos, df_performance['coverage'], color='green', marker='o', label='Coverage', linewidth=2, markersize=8)
+    # Use the first alpha value for the target line, or calculate average if multiple
+    if isinstance(param_alpha, list):
+        target_alpha = sum(param_alpha) / len(param_alpha) if param_alpha else 0.2
+    else:
+        target_alpha = param_alpha
+    ax.axhline(y=1-target_alpha, color='green', linestyle='--', alpha=0.7, label=f'Target Coverage (1-α = {1-target_alpha:.2f})')
 
-    # Plot mean width (right)
+    # Plot mean width (right, inverted)
     p2, = ax_mw.plot(x_pos, df_performance['mean_width'], color='purple', marker='s', label='Mean Width', linewidth=2, markersize=8)
+    ax_mw.set_ylim(ax_mw.get_ylim()[::-1])  # Invert the y-axis so lower values are better (higher on plot)
 
     # Plot non-contiguous % (far right, inverted)
     p3, = ax_nc.plot(x_pos, df_performance['non_contiguous_percentage'], color='red', marker='^', label='Non-contiguous %', linewidth=2, markersize=8)
     ax_nc.set_ylim(1, 0)  # Invert so smaller is better at top
 
-    # Plot alpha values (far right, normal scale)
-    p4, = ax_nc.plot(x_pos, df_performance['alpha'], color='orange', marker='d', label='Alpha', linewidth=2, markersize=8)
-
     # Axis labels
     ax.set_xlabel('Methods (ordered by performance)', fontsize=14)
     ax.set_ylabel('Coverage', color='green', fontsize=14)
     ax_mw.set_ylabel('Mean Width', color='purple', fontsize=14)
-    ax_nc.set_ylabel('Non-contiguous % / Alpha', color='red', fontsize=14)
+    ax_nc.set_ylabel('Non-contiguous %', color='red', fontsize=14)
 
     # Axis colors
     ax.tick_params(axis='y', labelcolor='green', labelsize=12)
@@ -53,7 +57,7 @@ def plot_overall_performance_comparison(df_performance, param_alpha):
     ax.set_ylim(0, 1)
 
     # Legends
-    lines = [p1, p2, p3, p4]
+    lines = [p1, p2, p3]
     labels = [l.get_label() for l in lines]
     ax.legend(lines, labels, loc='upper right', fontsize=12)
 
@@ -143,13 +147,32 @@ def plot_non_contiguous_prediction_sets(df):
     return fig
 
 
+def plot_quadratic_weighted_kappa(df):
+    """Create the Quadratic Weighted Kappa plot."""
+    fig, ax = plt.subplots(figsize=(8, 5))
+    x_pos = np.arange(len(df))
+    
+    ax.bar(x_pos, df['qwk'], alpha=0.7, color='teal')
+    ax.set_xlabel('Methods', fontsize=12)
+    ax.set_ylabel('Quadratic Weighted Kappa', fontsize=12)
+    ax.set_title('Quadratic Weighted Kappa (QWK)', fontsize=14)
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels([f"{row['model']}_{row['loss_fn']}_{row['score_alg']}_alpha{row['alpha']:.2f}" for _, row in df.iterrows()], rotation=45, ha='right', fontsize=10)
+    ax.tick_params(axis='y', labelsize=10)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    
+    return fig
+
+
 def plot_individual_metrics_grid(df, param_alpha):
-    """Return the 4 individual metric plots as a tuple of figures for a 2x2 grid layout."""
+    """Return the 5 individual metric plots as a tuple of figures for a 2x2 grid + 1 standalone layout."""
     fig1 = plot_classification_mean_width_score(df)
     fig2 = plot_regression_mean_width_score(df)
     fig3 = plot_classification_coverage_score(df, param_alpha)
     fig4 = plot_non_contiguous_prediction_sets(df)
-    return fig1, fig2, fig3, fig4
+    fig5 = plot_quadratic_weighted_kappa(df)
+    return fig1, fig2, fig3, fig4, fig5
 
 
 def plot_size_stratified_coverage(results, y_test, param_alpha):

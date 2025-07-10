@@ -12,7 +12,8 @@ from plots import (
     plot_individual_metrics_grid,
     plot_size_stratified_coverage,
     plot_model_performance_metrics,
-    plot_prediction_set_size_distribution
+    plot_prediction_set_size_distribution,
+    plot_quadratic_weighted_kappa
 )
 
 # -- PARAMETERS
@@ -72,7 +73,7 @@ torch.classes.__path__ = []
 
 
 @st.cache_resource(hash_funcs={list[str]: lambda l: hash(frozenset(l))})
-def load_cp_runner(dataset, model, score_alg, loss_fn, alpha):
+def load_cp_runner(dataset, model, score_alg, loss_fn, alpha, replication):
     from cp_runner import CPRunner
     return CPRunner(
         dataset,
@@ -80,6 +81,7 @@ def load_cp_runner(dataset, model, score_alg, loss_fn, alpha):
         score_alg,
         loss_fn,
         alpha,
+        replication,
         device='mps' if torch.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
     )
 
@@ -123,7 +125,7 @@ if cp_runner is None:
     if param_dataset == '' or param_model == [] or param_score_alg == [] or param_loss_fn == []:
         st.warning('Please input all parameters.')
         st.stop()
-    cp_runner = load_cp_runner(param_dataset, param_model, param_score_alg, param_loss_fn, param_alpha)
+    cp_runner = load_cp_runner(param_dataset, param_model, param_score_alg, param_loss_fn, param_alpha, param_replication)
 
 # Export button (enabled if results exist)
 if cp_runner.has_run and not cp_runner.has_error:
@@ -150,7 +152,7 @@ if not cp_runner.has_run:
             dataset = load_dataset(param_dataset)
             progress_bar = st.progress(0, text='Evaluation in progress...')
             try:
-                cp_runner.run(dataset, param_replication, progress_bar)
+                cp_runner.run(dataset, progress_bar)
             except:
                 st.error('An error occurred during evaluation. Please check the logs for more details.')
                 if st.button('Retry'):
@@ -169,10 +171,100 @@ if not cp_runner.has_run:
 
 # -- RESULTS
 X_test, y_test = cp_runner.dataset.get_test_data()
-
-st.subheader('Metrics')
-
 results = cp_runner.get_results()
+
+# Helper function to calculate performance score
+def calculate_performance_score(df_subset):
+    """Calculate performance score for a subset of data."""
+    if len(df_subset) == 0:
+        return df_subset
+    
+    df_subset = df_subset.copy()
+    df_subset['performance_score'] = (
+        df_subset['coverage'] +  # Higher is better (already 0-1)
+        (1 - df_subset['mean_width'] / df_subset['mean_width'].max()) +  # Normalize mean_width to 0-1, lower is better
+        (1 - df_subset['non_contiguous_percentage'])  # Non-contiguous % to 0-1, lower is better
+    ) / 3  # Average of the three normalized metrics
+    df_subset = df_subset.sort_values('performance_score', ascending=False)
+    df_subset['performance_score'] = df_subset['performance_score'].round(5)
+    return df_subset
+
+# Helper function to display metrics dataframe
+def display_metrics_dataframe(df_subset):
+    """Display metrics dataframe with consistent column configuration."""
+    st.dataframe(
+        df_subset,
+        column_config={
+            'model': st.column_config.TextColumn('Model', pinned=True),
+            'loss_fn': st.column_config.TextColumn('Loss Function', pinned=True),
+            'score_alg': st.column_config.TextColumn('Score Algorithm', pinned=True),
+            'alpha': None,
+            'coverage': st.column_config.NumberColumn('Coverage', format='%.3f', help='Classification Coverage Score (target: 1-α)'),
+            'mean_width': st.column_config.NumberColumn('Mean Width', format='%.3f', help='Classification Mean Width Score'),
+            'mean_range': st.column_config.NumberColumn('Mean Range', format='%.3f', help='Mean Interval Range (Regression Mean Width Score)'),
+            'mean_gaps': st.column_config.NumberColumn('Mean Gaps', format='%.3f', help='Mean Gaps within Prediction Set'),
+            'pred_set_mae': st.column_config.NumberColumn('Pred Set MAE', format='%.3f', help='Mean Absolute Error of Prediction Set'),
+            'accuracy': st.column_config.NumberColumn('Accuracy', format='%.3f', help='Classification Accuracy'),
+            'mae': st.column_config.NumberColumn('MAE', format='%.3f', help='Mean Absolute Error'),
+            'qwk': st.column_config.NumberColumn('QWK', format='%.3f', help='Quadratic Weighted Kappa'),
+            'non_contiguous_percentage': st.column_config.NumberColumn('Non-contiguous %', format='%.3f', help='Percentage of Non-Contiguous Prediction Sets'),
+            'performance_score': st.column_config.NumberColumn('Performance Score', format='%.3f', help='Overall performance score (higher is better)'),
+        },
+        hide_index=True,
+    )
+
+# Helper function to display all plots for a given alpha
+def display_alpha_plots(df_alpha, alpha_val, results, y_test):
+    """Display all plots for a specific alpha value."""
+    # Overall Performance Comparison
+    st.subheader('Overall Performance Comparison')
+    df_performance_alpha = df_alpha.copy()
+    fig_overall = plot_overall_performance_comparison(df_performance_alpha, alpha_val)
+    with st_narrow():
+        st.pyplot(fig_overall)
+    
+    # Individual Metric Plots
+    st.subheader('Individual Metric Plots')
+    fig1, fig2, fig3, fig4, fig5 = plot_individual_metrics_grid(df_alpha, alpha_val)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.pyplot(fig1)
+        st.pyplot(fig3)
+        st.pyplot(fig5)
+    with col2:
+        st.pyplot(fig2)
+        st.pyplot(fig4)
+    
+    # Size-Stratified Coverage
+    st.subheader('Size-Stratified Coverage (SSC)')
+    alpha_results = {name: pred for name, pred in results.items() if f'_alpha{alpha_val:.2f}' in name}
+    fig5, ssc_df = plot_size_stratified_coverage(alpha_results, y_test, alpha_val)
+    
+    if fig5 is not None:
+        with st_narrow():
+            st.pyplot(fig5)
+        
+        # Display SSC table
+        st.write("Size-Stratified Coverage Details:")
+        ssc_display_df = ssc_df.copy()
+        ssc_display_df = ssc_display_df.set_index('method')
+        ssc_display_df.columns = [f'Size {col.split("_")[1]}' for col in ssc_display_df.columns]
+        st.dataframe(ssc_display_df)
+    
+    # Model Performance Metrics
+    st.subheader('Model Performance Metrics')
+    fig_acc, fig_mae = plot_model_performance_metrics(df_alpha)
+    col_acc, col_mae = st.columns(2)
+    with col_acc:
+        st.pyplot(fig_acc)
+    with col_mae:
+        st.pyplot(fig_mae)
+    
+    # Prediction Set Size Distribution
+    st.subheader('Prediction Set Size Distribution')
+    fig7 = plot_prediction_set_size_distribution(alpha_results)
+    with st_narrow():
+        st.pyplot(fig7, use_container_width=False)
 
 # Get metrics for all methods
 metrics_data = []
@@ -194,103 +286,31 @@ for name, pred_results in results.items():
     })
 
 df = pd.DataFrame(metrics_data)
+df = calculate_performance_score(df)
 
-# Create performance score and sort by it
-# Normalize metrics to 0-1 range and combine them
-df['performance_score'] = (
-    df['coverage'] +  # Higher is better (already 0-1)
-    (1 - df['mean_width'] / df['mean_width'].max()) +  # Normalize mean_width to 0-1, lower is better
-    (1 - df['non_contiguous_percentage'])  # Non-contiguous % to 0-1, lower is better
-) / 3  # Average of the three normalized metrics
-df = df.sort_values(['alpha', 'performance_score'], ascending=[True, False])
+# Group by alpha and create tabs
+unique_alphas = sorted(df['alpha'].unique())
 
-# Round performance score for display
-df['performance_score'] = df['performance_score'].round(5)
-
-st.dataframe(
-    df,
-    column_config={
-        'model': st.column_config.TextColumn('Model', pinned=True),
-        'loss_fn': st.column_config.TextColumn('Loss Function', pinned=True),
-        'score_alg': st.column_config.TextColumn('Score Algorithm', pinned=True),
-        'alpha': st.column_config.NumberColumn('Alpha', format='%.2f', help='Significance level (1-α is target coverage)'),
-        'coverage': st.column_config.NumberColumn('Coverage', format='%.3f', help='Classification Coverage Score (target: 1-α)'),
-        'mean_width': st.column_config.NumberColumn('Mean Width', format='%.3f', help='Classification Mean Width Score'),
-        'mean_range': st.column_config.NumberColumn('Mean Range', format='%.3f', help='Mean Interval Range (Regression Mean Width Score)'),
-        'mean_gaps': st.column_config.NumberColumn('Mean Gaps', format='%.3f', help='Mean Gaps within Prediction Set'),
-        'pred_set_mae': st.column_config.NumberColumn('Pred Set MAE', format='%.3f', help='Mean Absolute Error of Prediction Set'),
-        'accuracy': st.column_config.NumberColumn('Accuracy', format='%.3f', help='Classification Accuracy'),
-        'mae': st.column_config.NumberColumn('MAE', format='%.3f', help='Mean Absolute Error'),
-        'non_contiguous_percentage': st.column_config.NumberColumn('Non-contiguous %', format='%.3f', help='Percentage of Non-Contiguous Prediction Sets'),
-        'performance_score': st.column_config.NumberColumn('Performance Score', format='%.3f', help='Overall performance score (higher is better)'),
-    },
-    hide_index=True,
-)
-
-# Overall Performance Comparison
-st.subheader('Overall Performance Comparison')
-
-# Create a performance score for each method
-# Higher coverage is better, lower mean_width is better, lower non_contiguous_percentage is better
-df_performance = df.copy()
-df_performance['performance_score'] = (
-    df_performance['coverage'] +  # Higher is better (already 0-1)
-    (1 - df_performance['mean_width'] / df_performance['mean_width'].max()) +  # Normalize mean_width to 0-1, lower is better
-    (1 - df_performance['non_contiguous_percentage'])  # Non-contiguous % to 0-1, lower is better
-) / 3  # Average of the three normalized metrics
-
-# Sort by alpha first, then by performance score (descending)
-df_performance = df_performance.sort_values(['alpha', 'performance_score'], ascending=[True, False])
-
-# Create the comparison plot with dual y-axes
-fig_overall = plot_overall_performance_comparison(df_performance, param_alpha)
-
-with st_narrow():
-    st.pyplot(fig_overall)
-
-# Individual Metric Plots
-st.subheader('Individual Metric Plots')
-fig1, fig2, fig3, fig4 = plot_individual_metrics_grid(df, param_alpha)
-col1, col2 = st.columns(2)
-with col1:
-    st.pyplot(fig1)
-    st.pyplot(fig3)
-with col2:
-    st.pyplot(fig2)
-    st.pyplot(fig4)
-
-# 5. Size-Stratified Coverage (SSC)
-st.subheader('Size-Stratified Coverage (SSC)')
-
-fig5, ssc_df = plot_size_stratified_coverage(results, y_test, param_alpha)
-
-if fig5 is not None:
-    with st_narrow():
-        st.pyplot(fig5)
+if len(unique_alphas) > 1:
+    # Create tabs for each alpha
+    tab_names = [f"Alpha {alpha:.2f}" for alpha in unique_alphas]
+    tabs = st.tabs(tab_names)
     
-    # Display SSC table
-    st.write("Size-Stratified Coverage Details:")
-    ssc_display_df = ssc_df.copy()
-    ssc_display_df = ssc_display_df.set_index('method')
-    ssc_display_df.columns = [f'Size {col.split("_")[1]}' for col in ssc_display_df.columns]
-    st.dataframe(ssc_display_df)
-
-# 6. Model Performance Metrics
-st.subheader('Model Performance Metrics')
-fig_acc, fig_mae = plot_model_performance_metrics(df)
-col_acc, col_mae = st.columns(2)
-with col_acc:
-    st.pyplot(fig_acc)
-with col_mae:
-    st.pyplot(fig_mae)
-
-# 7. Prediction Set Size Distribution
-st.subheader('Prediction Set Size Distribution')
-
-fig7 = plot_prediction_set_size_distribution(results)
-
-with st_narrow():
-    st.pyplot(fig7, use_container_width=False)
+    for i, alpha_val in enumerate(unique_alphas):
+        with tabs[i]:
+            st.subheader(f'Metrics')
+            
+            # Filter data for this alpha and recalculate performance score
+            df_alpha = df[df['alpha'] == alpha_val].copy()
+            df_alpha = calculate_performance_score(df_alpha)
+            
+            display_metrics_dataframe(df_alpha)
+            display_alpha_plots(df_alpha, alpha_val, results, y_test)
+else:
+    # Single alpha - display normally
+    st.subheader('Metrics')
+    display_metrics_dataframe(df)
+    display_alpha_plots(df, df['alpha'].iloc[0], results, y_test)
 
 if param_replication == 1:
     st.subheader('Samples')

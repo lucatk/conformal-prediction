@@ -18,7 +18,7 @@ class CPRunner:
     max_epochs = 25
 
     def __init__(self, dataset_name: str, model: list[str], score_alg: list[str], loss_fn: list[str], alpha: list[float],
-                 device: str):
+                 replication: int, device: str):
         self.progress: float | None = None
         self.has_run: bool = False
         self.has_error: bool = False
@@ -29,6 +29,7 @@ class CPRunner:
         self.score_alg = score_alg
         self.loss_fn = loss_fn
         self.alpha = alpha
+        self.num_replications = replication
         self.device = device
 
     def save_results_bytes(self):
@@ -73,7 +74,7 @@ class CPRunner:
         
         return cp_runner
 
-    def run(self, dataset: Dataset, num_replications: int, progress_bar: ProgressMixin):
+    def run(self, dataset: Dataset, progress_bar: ProgressMixin):
         if self.has_run or (self.progress is not None and not self.has_error):
             return
         self.has_error = False
@@ -81,7 +82,7 @@ class CPRunner:
         self.set_progress(0, progress_bar)
 
         try:
-            for rep in range(num_replications):  # repeat the fitting process for each replication
+            for rep in range(self.num_replications):  # repeat the fitting process for each replication
                 self.set_progress(0, progress_bar, f'[Replication {rep+1}] Fitting...')
                 estimators = self._get_estimators(dataset.get_num_classes())
                 predictors = self._get_cp_predictors(estimators)

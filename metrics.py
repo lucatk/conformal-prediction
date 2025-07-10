@@ -15,6 +15,7 @@ class Metrics(NamedTuple):
     pred_set_mae: float                          # Mean Absolute Error of Prediction Set (Ordinal Distance from True Class)
     accuracy: float                              # Classification Accuracy
     mae: float                                   # Mean Absolute Error
+    qwk: float                                   # Quadratic Weighted Kappa
     non_contiguous_percentage: float             # Percentage of Non-Contiguous Prediction Sets
     size_stratified_coverage: Dict[int, float]   # Coverage per Prediction Set Size
 
@@ -35,6 +36,7 @@ def get_metrics(
         pred_set_mae=calc_pred_set_mae(y_true, pred_set),
         accuracy=calc_accuracy(y_true, y_pred),
         mae=calc_mae(y_true, y_pred),
+        qwk=calc_qwk(y_true, y_pred),
         non_contiguous_percentage=calc_non_contiguous_percentage(pred_set),
         size_stratified_coverage=calc_size_stratified_coverage(y_true, pred_set),
     )
@@ -65,6 +67,7 @@ def get_metrics_across_reps(
         pred_set_mae=float(np.mean([m.pred_set_mae for m in rep_metrics])),
         accuracy=float(np.mean([m.accuracy for m in rep_metrics])),
         mae=float(np.mean([m.mae for m in rep_metrics])),
+        qwk=float(np.mean([m.qwk for m in rep_metrics])),
         non_contiguous_percentage=float(np.mean([m.non_contiguous_percentage for m in rep_metrics])),
         size_stratified_coverage=avg_size_coverage,
     )
@@ -113,6 +116,22 @@ def calc_mae(
 ) -> float:
     """Calculate Mean Absolute Error."""
     return float(np.mean(np.abs(y_true - y_pred)))
+
+
+def calc_qwk(
+    y_true: ndarray,
+    y_pred: ndarray,
+) -> float:
+    """Calculate Quadratic Weighted Kappa."""
+    from sklearn.metrics import cohen_kappa_score
+    
+    # Ensure inputs are integers for kappa calculation
+    y_true_int = y_true.astype(int)
+    y_pred_int = y_pred.astype(int)
+    
+    # Calculate quadratic weighted kappa
+    qwk = cohen_kappa_score(y_true_int, y_pred_int, weights='quadratic')
+    return float(qwk)
 
 
 def calc_non_contiguous_percentage(
