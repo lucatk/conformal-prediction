@@ -1,7 +1,7 @@
 import numpy as np
 from dlordinal.datasets import Adience
 from numpy import ndarray
-from torchvision.transforms import Compose, ToTensor
+from torchvision.transforms import Compose, ToTensor, Lambda
 
 from datasets.base_dataset import Dataset
 
@@ -19,17 +19,26 @@ class AdienceDataset(Dataset):
     y_test: ndarray
 
     def __init__(self, root_path: str):
+        # Custom resize function that scales by 0.5
+        def resize_by_scale(img):
+            from PIL import Image
+            if isinstance(img, Image.Image):
+                width, height = img.size
+                new_width = int(width * 0.5)
+                new_height = int(height * 0.5)
+                return img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            return img
         self.train_dataset = Adience(
             root=root_path,
             train=True,
             target_transform=np.array,
-            transform=Compose([ToTensor()]),
+            transform=Compose([Lambda(resize_by_scale), ToTensor()]),  # Resize by scale (0.5)
         )
         self.test_dataset = Adience(
             root=root_path,
             train=False,
             target_transform=np.array,
-            transform=Compose([ToTensor()]),
+            transform=Compose([Lambda(resize_by_scale), ToTensor()]),  # Resize by scale (0.5)
         )
         self.prepare_data()
 
