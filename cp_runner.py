@@ -1,4 +1,6 @@
+import os
 import pickle
+
 from mapie.classification import MapieClassifier
 from numpy import ndarray
 from sklearn.base import ClassifierMixin
@@ -7,7 +9,9 @@ from streamlit.elements.progress import ProgressMixin
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
+from torch.utils.data import DataLoader
 from torchvision import models
+from tqdm.contrib.telegram import tqdm
 
 from datasets.base_dataset import Dataset
 from models.resnet18_uni import UnimodalResNet18
@@ -82,7 +86,7 @@ class CPRunner:
         self.set_progress(0, progress_bar)
 
         try:
-            for rep in range(self.num_replications):  # repeat the fitting process for each replication
+            for rep in (pbar_rep := tqdm(range(self.num_replications), desc='Replications')):  # repeat the fitting process for each replication
                 self.set_progress(0, progress_bar, f'[Replication {rep+1}] Fitting...')
                 estimators = self._get_estimators(dataset.get_num_classes())
                 predictors = self._get_cp_predictors(estimators)
@@ -90,37 +94,55 @@ class CPRunner:
                 X_train, y_train = dataset.get_train_data()
                 print("X_train shape:", X_train.shape)
                 print("y_train shape:", y_train.shape)
-                for idx, (name, (_, predictor)) in enumerate(predictors.items()):
+                for idx, (name, (_, predictor)) in enumerate((pbar_fit := tqdm(predictors.items(), leave=False))):
+                    desc = f'[Replication {rep+1}] Fitting {name} ({idx + 1}/{len(predictors)})...'
                     self.set_progress(0.1 + (idx / len(predictors)) * 0.4, progress_bar,
-                                      f'[Replication {rep+1}] Fitting {name} ({idx + 1}/{len(predictors)})...')
+                                      desc)
+                    pbar_fit.set_description(desc)
 
                     class EpochProgress(Callback):
                         def __init__(self, cp_runner: CPRunner):
                             self.cp_runner = cp_runner
+
+                        def on_train_begin(self, net, X=None, y=None, **kwargs):
+                            self.pbar = tqdm(total=self.cp_runner.max_epochs, leave=False)
 
                         def on_epoch_begin(self, net, **kwargs):
                             cur_epoch = len(net.history)
                             self.cp_runner.set_progress(
                                 0.1 + ((idx + (cur_epoch/self.cp_runner.max_epochs)) / len(predictors)) * 0.4, progress_bar,
                                       f'[Replication {rep+1}] Fitting {name} ({idx + 1}/{len(predictors)}) - epoch {cur_epoch}/{self.cp_runner.max_epochs}...')
+                            self.pbar.update()
+                            self.pbar.set_description(f'epoch {cur_epoch}/{self.cp_runner.max_epochs}')
+
+                        def on_train_end(self, net, **kwargs):
+                            self.pbar.close()
 
                     predictor.estimator.set_params(callbacks=[('epoch_progress', EpochProgress(self))])
                     predictor.fit(X_train, y_train)
+                pbar_fit.close()
 
                 self.set_progress(0.5, progress_bar, f'[Replication {rep+1}] Predicting (0/{len(predictors)})...')
+
                 X_test, y_test = dataset.get_test_data()
 
-                for idx, (name, (alpha, predictor)) in enumerate(predictors.items()):
+                for idx, (name, (alpha, predictor)) in enumerate((pbar_pred := tqdm(predictors.items(), desc="Predicting...", leave=False))):
                     if name not in self.preds:
                         self.preds[name] = []
-                    
+
+                    desc = f'[Replication {rep+1}] Predicting {name} ({idx + 1}/{len(predictors)})...'
                     self.set_progress(0.6 + (idx / len(predictors)) * 0.4, progress_bar,
-                                      f'[Replication {rep+1}] Predicting {name} ({idx + 1}/{len(predictors)})...')
+                                      desc)
+                    pbar_pred.set_description(desc)
+
                     y_pred, y_pred_set = predictor.predict(X_test, alpha=alpha)
                     self.preds[name].append((y_pred, y_pred_set))
+                pbar_pred.close()
         except:
+            # pbar_rep.display(msg=f'[Replication {rep+1}] Error occurred.')
             self.has_error = True
             raise
+        # pbar_rep.display(msg="Run completed successfully.")
         self.has_run = True
 
     def set_progress(self, progress, progress_bar: ProgressMixin, text: str = None):
@@ -223,3 +245,4 @@ class CPRunner:
         if not self.has_run:
             raise RuntimeError("CPRunner has not been run yet.")
         return self.preds
+

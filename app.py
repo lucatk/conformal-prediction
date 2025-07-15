@@ -1,6 +1,5 @@
 import os
 
-import numpy as np
 import pandas as pd
 import streamlit as st
 import torch
@@ -13,8 +12,11 @@ from plots import (
     plot_size_stratified_coverage,
     plot_model_performance_metrics,
     plot_prediction_set_size_distribution,
-    plot_quadratic_weighted_kappa
 )
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # -- PARAMETERS
 
