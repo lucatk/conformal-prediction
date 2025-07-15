@@ -19,13 +19,13 @@ class AdienceDataset(Dataset):
     y_test: ndarray
 
     def __init__(self, root_path: str):
-        # Custom resize function that scales by 0.5
+        # Custom resize function that scales by 0.25
         def resize_by_scale(img):
             from PIL import Image
             if isinstance(img, Image.Image):
                 width, height = img.size
-                new_width = int(width * 0.5)
-                new_height = int(height * 0.5)
+                new_width = int(width * 0.25)
+                new_height = int(height * 0.25)
                 return img.resize((new_width, new_height), Image.Resampling.LANCZOS)
             return img
         self.train_dataset = Adience(
