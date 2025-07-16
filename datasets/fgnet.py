@@ -10,6 +10,8 @@ class FGNetDataset(Dataset):
     """
     FGNet dataset.
     """
+    name = 'FGNet'
+
     train_dataset: FGNet
     test_dataset: FGNet
 

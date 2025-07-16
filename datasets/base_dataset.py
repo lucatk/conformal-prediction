@@ -4,6 +4,8 @@ import numpy as np
 
 
 class Dataset(ABC):
+    name: str = None
+
     @abstractmethod
     def get_train_data(self) -> tuple[np.ndarray, np.ndarray]:
         """

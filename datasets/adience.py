@@ -10,6 +10,9 @@ class AdienceDataset(Dataset):
     """
     Adience dataset.
     """
+
+    name = 'Adience'
+
     train_dataset: Adience
     test_dataset: Adience
 

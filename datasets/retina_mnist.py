@@ -6,6 +6,8 @@ from datasets.base_dataset import Dataset
 
 
 class RetinaMNISTDataset(Dataset):
+    name = 'RetinaMNIST'
+
     def __init__(self, root_path: str):
         self.train_dataset = RetinaMNIST(
             root=root_path,

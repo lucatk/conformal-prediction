@@ -1,6 +1,12 @@
 import os
 import pickle
+import traceback
+from pathlib import Path
+from threading import Thread
+from typing import Callable
 
+import pandas as pd
+import runpod
 from mapie.classification import MapieClassifier
 from numpy import ndarray
 from sklearn.base import ClassifierMixin
@@ -9,7 +15,6 @@ from streamlit.elements.progress import ProgressMixin
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
-from torch.utils.data import DataLoader
 from torchvision import models
 from tqdm.contrib.telegram import tqdm
 
@@ -17,18 +22,28 @@ from datasets.base_dataset import Dataset
 from models.resnet18_uni import UnimodalResNet18
 from util import SoftmaxNeuralNetClassifier
 
+import streamlit as st
 
-class CPRunner:
+
+runpod_token = os.getenv('RUNPOD_API_KEY')
+runpod_pod_id = os.getenv('RUNPOD_POD_ID')
+data_root = os.environ['DATA_ROOT'] if 'DATA_ROOT' in os.environ else '.'
+if runpod_token is not None:
+    runpod.api_key = runpod_token
+
+
+class CPRunner(Thread):
     max_epochs = 25
 
-    def __init__(self, dataset_name: str, model: list[str], score_alg: list[str], loss_fn: list[str], alpha: list[float],
+    def __init__(self, dataset: Dataset, model: list[str], score_alg: list[str], loss_fn: list[str], alpha: list[float],
                  replication: int, device: str):
+        super().__init__()
         self.progress: float | None = None
         self.has_run: bool = False
         self.has_error: bool = False
         self.preds: dict[str, list[tuple[ndarray, ndarray]]] = {}
 
-        self.dataset_name = dataset_name
+        self.dataset = dataset
         self.model = model
         self.score_alg = score_alg
         self.loss_fn = loss_fn
@@ -36,14 +51,16 @@ class CPRunner:
         self.num_replications = replication
         self.device = device
 
-    def save_results_bytes(self):
+        self.terminate_after_run = False
+
+    def export_results(self):
         """Save results and metadata as bytes."""
         if not self.has_run:
             raise RuntimeError("CPRunner has not been run yet. No results to save.")
         
         # Save both results and metadata
         save_data = {
-            'dataset_name': self.dataset_name,
+            'dataset_name': self.dataset.name,
             'model': self.model,
             'score_alg': self.score_alg,
             'loss_fn': self.loss_fn,
@@ -53,17 +70,21 @@ class CPRunner:
             'has_run': self.has_run,
             'has_error': self.has_error
         }
-        
-        return pickle.dumps(save_data)
+
+        score_alg_str = "_".join(self.score_alg)
+        loss_fn_str = "_".join(self.loss_fn)
+        timestamp = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"results_{timestamp}_{self.dataset.name}_{self.model}_{score_alg_str}_{loss_fn_str}_alpha{self.alpha}.pkl"
+
+        return pickle.dumps(save_data), filename
 
     @staticmethod
-    def from_bytes(data_bytes: bytes):
+    def from_save(save_data: any, dataset: Dataset):
         """Create a new CPRunner instance from saved bytes."""
-        save_data = pickle.loads(data_bytes)
         
         # Create new instance with saved metadata
         cp_runner = CPRunner(
-            dataset_name=save_data['dataset_name'],
+            dataset=dataset,
             model=save_data['model'],
             score_alg=save_data['score_alg'],
             loss_fn=save_data['loss_fn'],
@@ -78,20 +99,35 @@ class CPRunner:
         
         return cp_runner
 
-    def run(self, dataset: Dataset, progress_bar: ProgressMixin):
+    def set_terminate_after_run(self, terminate: bool):
+        """Set whether to terminate the pod after run."""
+        self.terminate_after_run = terminate
+
+    def terminate_pod(self):
+        print(f'Run {'failed. T' if self.has_error else 'succeeded. Exporting results and t'}erminating pod...')
+        if not self.has_error:
+            export_path = str(Path(data_root + '/exports').resolve())
+            os.makedirs(export_path, exist_ok=True)
+            file_data, filename = self.export_results()
+            with open(os.path.join(export_path, filename), 'wb') as f:
+                f.write(file_data)
+        runpod.stop_pod(runpod_pod_id)
+
+    def run(self):
         if self.has_run or (self.progress is not None and not self.has_error):
             return
         self.has_error = False
-        self.dataset = dataset
+
+        progress_bar = st.progress(0, text='Evaluation in progress...')
         self.set_progress(0, progress_bar)
 
         try:
             for rep in (pbar_rep := tqdm(range(self.num_replications), desc='Replications')):  # repeat the fitting process for each replication
                 self.set_progress(0, progress_bar, f'[Replication {rep+1}] Fitting...')
-                estimators = self._get_estimators(dataset.get_num_classes())
+                estimators = self._get_estimators(self.dataset.get_num_classes())
                 predictors = self._get_cp_predictors(estimators)
 
-                X_train, y_train = dataset.get_train_data()
+                X_train, y_train = self.dataset.get_train_data()
                 print("X_train shape:", X_train.shape)
                 print("y_train shape:", y_train.shape)
                 for idx, (name, (_, predictor)) in enumerate((pbar_fit := tqdm(predictors.items(), leave=False))):
@@ -100,31 +136,34 @@ class CPRunner:
                                       desc)
                     pbar_fit.set_description(desc)
 
-                    class EpochProgress(Callback):
-                        def __init__(self, cp_runner: CPRunner):
-                            self.cp_runner = cp_runner
+                    pbar: tqdm | None = None
 
-                        def on_train_begin(self, net, X=None, y=None, **kwargs):
-                            self.pbar = tqdm(total=self.cp_runner.max_epochs, leave=False)
+                    def on_train_begin(net):
+                        nonlocal pbar
+                        pbar = tqdm(total=self.max_epochs, leave=False)
 
-                        def on_epoch_begin(self, net, **kwargs):
-                            cur_epoch = len(net.history)
-                            self.cp_runner.set_progress(
-                                0.1 + ((idx + (cur_epoch/self.cp_runner.max_epochs)) / len(predictors)) * 0.4, progress_bar,
-                                      f'[Replication {rep+1}] Fitting {name} ({idx + 1}/{len(predictors)}) - epoch {cur_epoch}/{self.cp_runner.max_epochs}...')
-                            self.pbar.update()
-                            self.pbar.set_description(f'epoch {cur_epoch}/{self.cp_runner.max_epochs}')
+                    def on_train_end(net):
+                        nonlocal pbar
+                        pbar.close()
 
-                        def on_train_end(self, net, **kwargs):
-                            self.pbar.close()
+                    def on_epoch_begin(net):
+                        nonlocal pbar
+                        cur_epoch = len(net.history)
+                        self.set_progress(
+                            0.1 + ((idx + (cur_epoch / self.max_epochs)) / len(predictors)) * 0.4, progress_bar,
+                            f'[Replication {rep + 1}] Fitting {name} ({idx + 1}/{len(predictors)}) - epoch {cur_epoch}/{self.max_epochs}...')
+                        pbar.update()
+                        pbar.set_description(f'epoch {cur_epoch}/{self.max_epochs}')
 
-                    predictor.estimator.set_params(callbacks=[('epoch_progress', EpochProgress(self))])
+                    predictor.estimator.set_params(callbacks=[
+                        ('epoch_progress', EpochProgress(on_train_begin, on_epoch_begin, on_train_end))
+                    ])
                     predictor.fit(X_train, y_train)
                 pbar_fit.close()
 
                 self.set_progress(0.5, progress_bar, f'[Replication {rep+1}] Predicting (0/{len(predictors)})...')
 
-                X_test, y_test = dataset.get_test_data()
+                X_test, y_test = self.dataset.get_test_data()
 
                 for idx, (name, (alpha, predictor)) in enumerate((pbar_pred := tqdm(predictors.items(), desc="Predicting...", leave=False))):
                     if name not in self.preds:
@@ -141,9 +180,16 @@ class CPRunner:
         except:
             # pbar_rep.display(msg=f'[Replication {rep+1}] Error occurred.')
             self.has_error = True
-            raise
+            if self.terminate_after_run:
+                traceback.print_exc()
+                self.terminate_pod()
+                return
+            else:
+                raise
         # pbar_rep.display(msg="Run completed successfully.")
         self.has_run = True
+        if self.terminate_after_run:
+            self.terminate_pod()
 
     def set_progress(self, progress, progress_bar: ProgressMixin, text: str = None):
         self.progress = progress
@@ -246,3 +292,23 @@ class CPRunner:
             raise RuntimeError("CPRunner has not been run yet.")
         return self.preds
 
+
+class EpochProgress(Callback):
+    def __init__(
+            self,
+            _on_train_begin: Callable[[any], None],
+            _on_epoch_begin: Callable[[any], None],
+            _on_train_end: Callable[[any], None]
+    ):
+        self._on_train_begin = _on_train_begin
+        self._on_epoch_begin = _on_epoch_begin
+        self._on_train_end = _on_train_end
+
+    def on_train_begin(self, net, **kwargs):
+        self._on_train_begin(net)
+
+    def on_epoch_begin(self, net, **kwargs):
+        self._on_epoch_begin(net)
+
+    def on_train_end(self, net, **kwargs):
+        self._on_train_end(net)

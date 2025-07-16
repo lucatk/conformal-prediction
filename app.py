@@ -1,9 +1,14 @@
 import os
+import pickle
 
 import pandas as pd
 import streamlit as st
 import torch
+from streamlit.runtime.scriptrunner_utils.script_run_context import add_script_run_ctx
 
+from datasets.adience import AdienceDataset
+from datasets.fgnet import FGNetDataset
+from datasets.retina_mnist import RetinaMNISTDataset
 from metrics import get_metrics_across_reps
 from util import frame_image_samples, st_narrow
 from plots import (
@@ -19,6 +24,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # -- PARAMETERS
+
+runpod_token = os.getenv('RUNPOD_API_KEY')
+runpod_pod_id = os.getenv('RUNPOD_POD_ID')
 
 data_root = os.environ['DATA_ROOT'] if 'DATA_ROOT' in os.environ else '.'
 
@@ -74,7 +82,16 @@ param_replication = st.sidebar.slider(
 torch.classes.__path__ = []
 
 
-@st.cache_resource(hash_funcs={list[str]: lambda l: hash(frozenset(l))})
+def has_runpod_creds():
+    return runpod_token is not None and runpod_pod_id is not None
+
+
+@st.cache_resource(hash_funcs={
+    FGNetDataset: lambda d: d.name,
+    AdienceDataset: lambda d: d.name,
+    RetinaMNISTDataset: lambda d: d.name,
+    list[str]: lambda l: hash(frozenset(l))
+})
 def load_cp_runner(dataset, model, score_alg, loss_fn, alpha, replication):
     from cp_runner import CPRunner
     return CPRunner(
@@ -97,6 +114,7 @@ def load_dataset(dataset):
 # Import/Export Section
 st.sidebar.write('---')
 
+dataset = None
 cp_runner = None
 
 # Import button
@@ -108,14 +126,15 @@ uploaded_file = st.sidebar.file_uploader(
 
 if uploaded_file is not None:
     try:
+        save_data = pickle.loads(uploaded_file.getbuffer())
+
+        dataset = load_dataset(save_data['dataset_name'])
+
         # Create a new CPRunner instance from the uploaded file
         from cp_runner import CPRunner
-        cp_runner = CPRunner.from_bytes(uploaded_file.getbuffer())
-        
-        # Load the dataset for the imported results
-        dataset = load_dataset(cp_runner.dataset_name)
-        cp_runner.dataset = dataset
-        
+
+        cp_runner = CPRunner.from_save(save_data, dataset)
+
         st.sidebar.success(f"✅ Imported results from {uploaded_file.name}")
     except Exception as e:
         st.sidebar.error(f"❌ Error importing results: {str(e)}")
@@ -127,18 +146,12 @@ if cp_runner is None:
     if param_dataset == '' or param_model == [] or param_score_alg == [] or param_loss_fn == []:
         st.warning('Please input all parameters.')
         st.stop()
-    cp_runner = load_cp_runner(param_dataset, param_model, param_score_alg, param_loss_fn, param_alpha, param_replication)
+    dataset = load_dataset(param_dataset)
+    cp_runner = load_cp_runner(dataset, param_model, param_score_alg, param_loss_fn, param_alpha, param_replication)
 
 # Export button (enabled if results exist)
 if cp_runner.has_run and not cp_runner.has_error:
-    # Create filename for download
-    score_alg_str = "_".join(cp_runner.score_alg)
-    loss_fn_str = "_".join(cp_runner.loss_fn)
-    filename = f"results_{cp_runner.dataset_name}_{cp_runner.model}_{score_alg_str}_{loss_fn_str}_alpha{cp_runner.alpha}.pkl"
-    
-    # Get results as bytes
-    file_data = cp_runner.save_results_bytes()
-    
+    file_data, filename = cp_runner.export_results()
     st.sidebar.download_button(
         label="Export Results",
         data=file_data,
@@ -150,46 +163,48 @@ if cp_runner.has_run and not cp_runner.has_error:
 if not cp_runner.has_run:
     if cp_runner.progress is None:
         st.write('The results for these parameters have not been evaluated yet.')
+        terminate_after_run = st.checkbox("Terminate after run and export results to disk") if has_runpod_creds() else False
         if st.button('Start evaluation'):
-            dataset = load_dataset(param_dataset)
-            progress_bar = st.progress(0, text='Evaluation in progress...')
-            try:
-                cp_runner.run(dataset, progress_bar)
-            except:
-                st.error('An error occurred during evaluation. Please check the logs for more details.')
-                if st.button('Retry'):
-                    load_cp_runner.clear(param_dataset, param_model, param_score_alg, param_loss_fn, param_alpha)
-                    st.rerun()
-                raise
+            cp_runner.set_terminate_after_run(terminate_after_run)
+
+            add_script_run_ctx(cp_runner)
+            cp_runner.start()
+            cp_runner.join()
             st.rerun()
     elif cp_runner.has_error:
         st.error('An error occurred during evaluation. Please check the logs for more details.')
         if st.button('Retry'):
-            load_cp_runner.clear(param_dataset, param_model, param_score_alg, param_loss_fn, param_alpha)
+            load_cp_runner.clear(dataset, param_model, param_score_alg, param_loss_fn, param_alpha, param_replication)
             st.rerun()
     else:
-        st.write('Evaluating... Refresh the page to see the results.')
+        st.write('Evaluating... See logs for progress.')
+        cp_runner.join()
+        st.rerun()
     st.stop()
 
 # -- RESULTS
 X_test, y_test = cp_runner.dataset.get_test_data()
 results = cp_runner.get_results()
 
+
 # Helper function to calculate performance score
 def calculate_performance_score(df_subset):
     """Calculate performance score for a subset of data."""
     if len(df_subset) == 0:
         return df_subset
-    
+
     df_subset = df_subset.copy()
     df_subset['performance_score'] = (
-        df_subset['coverage'] +  # Higher is better (already 0-1)
-        (1 - df_subset['mean_width'] / df_subset['mean_width'].max()) +  # Normalize mean_width to 0-1, lower is better
-        (1 - df_subset['non_contiguous_percentage'])  # Non-contiguous % to 0-1, lower is better
-    ) / 3  # Average of the three normalized metrics
+                                             df_subset['coverage'] +  # Higher is better (already 0-1)
+                                             (1 - df_subset['mean_width'] / df_subset[
+                                                 'mean_width'].max()) +  # Normalize mean_width to 0-1, lower is better
+                                             (1 - df_subset['non_contiguous_percentage'])
+                                     # Non-contiguous % to 0-1, lower is better
+                                     ) / 3  # Average of the three normalized metrics
     df_subset = df_subset.sort_values('performance_score', ascending=False)
     df_subset['performance_score'] = df_subset['performance_score'].round(5)
     return df_subset
+
 
 # Helper function to display metrics dataframe
 def display_metrics_dataframe(df_subset):
@@ -201,19 +216,27 @@ def display_metrics_dataframe(df_subset):
             'loss_fn': st.column_config.TextColumn('Loss Function', pinned=True),
             'score_alg': st.column_config.TextColumn('Score Algorithm', pinned=True),
             'alpha': None,
-            'coverage': st.column_config.NumberColumn('Coverage', format='%.3f', help='Classification Coverage Score (target: 1-α)'),
-            'mean_width': st.column_config.NumberColumn('Mean Width', format='%.3f', help='Classification Mean Width Score'),
-            'mean_range': st.column_config.NumberColumn('Mean Range', format='%.3f', help='Mean Interval Range (Regression Mean Width Score)'),
-            'mean_gaps': st.column_config.NumberColumn('Mean Gaps', format='%.3f', help='Mean Gaps within Prediction Set'),
-            'pred_set_mae': st.column_config.NumberColumn('Pred Set MAE', format='%.3f', help='Mean Absolute Error of Prediction Set'),
+            'coverage': st.column_config.NumberColumn('Coverage', format='%.3f',
+                                                      help='Classification Coverage Score (target: 1-α)'),
+            'mean_width': st.column_config.NumberColumn('Mean Width', format='%.3f',
+                                                        help='Classification Mean Width Score'),
+            'mean_range': st.column_config.NumberColumn('Mean Range', format='%.3f',
+                                                        help='Mean Interval Range (Regression Mean Width Score)'),
+            'mean_gaps': st.column_config.NumberColumn('Mean Gaps', format='%.3f',
+                                                       help='Mean Gaps within Prediction Set'),
+            'pred_set_mae': st.column_config.NumberColumn('Pred Set MAE', format='%.3f',
+                                                          help='Mean Absolute Error of Prediction Set'),
             'accuracy': st.column_config.NumberColumn('Accuracy', format='%.3f', help='Classification Accuracy'),
             'mae': st.column_config.NumberColumn('MAE', format='%.3f', help='Mean Absolute Error'),
             'qwk': st.column_config.NumberColumn('QWK', format='%.3f', help='Quadratic Weighted Kappa'),
-            'non_contiguous_percentage': st.column_config.NumberColumn('Non-contiguous %', format='%.3f', help='Percentage of Non-Contiguous Prediction Sets'),
-            'performance_score': st.column_config.NumberColumn('Performance Score', format='%.3f', help='Overall performance score (higher is better)'),
+            'non_contiguous_percentage': st.column_config.NumberColumn('Non-contiguous %', format='%.3f',
+                                                                       help='Percentage of Non-Contiguous Prediction Sets'),
+            'performance_score': st.column_config.NumberColumn('Performance Score', format='%.3f',
+                                                               help='Overall performance score (higher is better)'),
         },
         hide_index=True,
     )
+
 
 # Helper function to display all plots for a given alpha
 def display_alpha_plots(df_alpha, alpha_val, results, y_test):
@@ -224,7 +247,7 @@ def display_alpha_plots(df_alpha, alpha_val, results, y_test):
     fig_overall = plot_overall_performance_comparison(df_performance_alpha, alpha_val)
     with st_narrow():
         st.pyplot(fig_overall)
-    
+
     # Individual Metric Plots
     st.subheader('Individual Metric Plots')
     fig1, fig2, fig3, fig4, fig5 = plot_individual_metrics_grid(df_alpha, alpha_val)
@@ -236,23 +259,23 @@ def display_alpha_plots(df_alpha, alpha_val, results, y_test):
     with col2:
         st.pyplot(fig2)
         st.pyplot(fig4)
-    
+
     # Size-Stratified Coverage
     st.subheader('Size-Stratified Coverage (SSC)')
     alpha_results = {name: pred for name, pred in results.items() if f'_alpha{alpha_val:.2f}' in name}
     fig5, ssc_df = plot_size_stratified_coverage(alpha_results, y_test, alpha_val)
-    
+
     if fig5 is not None:
         with st_narrow():
             st.pyplot(fig5)
-        
+
         # Display SSC table
         st.write("Size-Stratified Coverage Details:")
         ssc_display_df = ssc_df.copy()
         ssc_display_df = ssc_display_df.set_index('method')
         ssc_display_df.columns = [f'Size {col.split("_")[1]}' for col in ssc_display_df.columns]
         st.dataframe(ssc_display_df)
-    
+
     # Model Performance Metrics
     st.subheader('Model Performance Metrics')
     fig_acc, fig_mae = plot_model_performance_metrics(df_alpha)
@@ -261,12 +284,13 @@ def display_alpha_plots(df_alpha, alpha_val, results, y_test):
         st.pyplot(fig_acc)
     with col_mae:
         st.pyplot(fig_mae)
-    
+
     # Prediction Set Size Distribution
     st.subheader('Prediction Set Size Distribution')
     fig7 = plot_prediction_set_size_distribution(alpha_results)
     with st_narrow():
         st.pyplot(fig7, use_container_width=False)
+
 
 # Get metrics for all methods
 metrics_data = []
@@ -278,7 +302,7 @@ for name, pred_results in results.items():
     parts = base_name.split('_', 2)
     model, loss_fn, score_alg = parts[0], parts[1], parts[2]
     alpha = float(alpha_part)
-    
+
     metrics_data.append({
         'model': model,
         'loss_fn': loss_fn,
@@ -297,15 +321,15 @@ if len(unique_alphas) > 1:
     # Create tabs for each alpha
     tab_names = [f"Alpha {alpha:.2f}" for alpha in unique_alphas]
     tabs = st.tabs(tab_names)
-    
+
     for i, alpha_val in enumerate(unique_alphas):
         with tabs[i]:
             st.subheader(f'Metrics')
-            
+
             # Filter data for this alpha and recalculate performance score
             df_alpha = df[df['alpha'] == alpha_val].copy()
             df_alpha = calculate_performance_score(df_alpha)
-            
+
             display_metrics_dataframe(df_alpha)
             display_alpha_plots(df_alpha, alpha_val, results, y_test)
 else:

@@ -11,6 +11,9 @@ matplotlib==3.10.1
 medmnist==3.0.2
 pillow~=11.2.1
 highlight_text==0.2
+dotenv==0.9.9
+tqdm==4.67.1
+runpod==1.7.12
 
 --extra-index-url https://download.pytorch.org/whl/cu128
 torch==2.7.0+cu128; sys_platform == "linux"
