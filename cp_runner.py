@@ -280,6 +280,7 @@ class CPRunner(Thread):
                     estimator=estimator,
                     conformity_score=score_alg,
                     cv='split',
+                    n_jobs=-1,
                 )
             )
             for model_idx, loss_fn_idx, estimator in estimators
