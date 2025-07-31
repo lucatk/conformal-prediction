@@ -52,14 +52,16 @@ def plot_overall_performance_comparison(df_performance, param_alpha):
     # X axis
     ax.set_xticks(x_pos)
     # Compose two-line labels: method name and score
-    xtick_labels = [f"{row['model']}_{row['loss_fn']}_{row['score_alg']}_alpha{row['alpha']:.2f}\nScore: {row['performance_score']:.3f}" for _, row in df_performance.iterrows()]
-    ax.set_xticklabels(xtick_labels, rotation=45, ha='right', fontsize=12)
+    xtick_labels = [f"{row['model']}_{row['loss_fn']}_{row['score_alg']}_alpha{row['alpha']:.2f}" for _, row in df_performance.iterrows()]
+    ax.set_xticklabels(xtick_labels, rotation=45, rotation_mode='anchor', ha='right', fontsize=12)
+    # for i, label in enumerate(ax.get_xticklabels()):
+    #     label.set_position((label.get_position()[0], label.get_position()[1] - i * 0.05))
     ax.set_ylim(0, 1)
 
     # Legends
-    lines = [p1, p2, p3]
-    labels = [l.get_label() for l in lines]
-    ax.legend(lines, labels, loc='upper right', fontsize=12)
+    # lines = [p1, p2, p3]
+    # labels = [l.get_label() for l in lines]
+    # ax.legend(lines, labels, loc='upper right', fontsize=12)
 
     ax.set_title('Overall Performance Comparison\n(Methods ordered by: max coverage, min mean width, min non-contiguous %)', fontsize=16)
     ax.grid(axis='y', linestyle='--', alpha=0.7)

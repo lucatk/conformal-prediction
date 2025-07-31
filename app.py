@@ -1,6 +1,7 @@
 import os
 import pickle
 
+import numpy
 import pandas as pd
 import streamlit as st
 import torch
@@ -38,48 +39,23 @@ score_alg_vals = ['LAC', 'APS', 'RAPS', 'RPS']
 # -- Streamlit Setup
 st.set_page_config(page_title='Conformal Prediction', layout='wide', page_icon=':parking:')
 
-# Sidebar & File Initialisation for potential selection
-st.sidebar.write('Configuration')
-
-param_dataset = st.sidebar.selectbox(
-    'Dataset',
-    dataset_vals,
-)
-param_model = st.sidebar.multiselect(
-    'Model',
-    model_vals,
-)
-
-param_score_alg = st.sidebar.multiselect(
-    'Score algorithm',
-    score_alg_vals,
-)
-param_loss_fn = st.sidebar.multiselect(
-    'Loss function',
-    loss_fn_vals,
-)
-param_hold_out_size = st.sidebar.slider(
-    'Hold out size',
-    min_value=0.0,
-    max_value=1.0,
-    value=0.2,
-    step=0.01,
-)
-alpha_presets = [0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.25]
-param_alpha = st.sidebar.multiselect(
-    'Alpha',
-    alpha_presets,
-    default=[0.2],
-)
-param_replication = st.sidebar.slider(
-    'Replication',
-    min_value=1,
-    max_value=100,
-    value=1,
-    step=1,
+# -- CSS
+st.markdown(
+    f"""
+    <style>
+        .stMultiSelect [data-baseweb=select] span{{
+            max-width: 500px;
+            # font-size: 0.8rem;
+        }}
+    </style>""",
+    unsafe_allow_html=True,
 )
 
+# -- Torch setup
 torch.classes.__path__ = []
+seed = 1
+numpy.random.seed(seed)
+torch.manual_seed(seed)
 
 
 def has_runpod_creds():
@@ -111,34 +87,92 @@ def load_dataset(dataset):
     return loader.load_dataset(dataset, data_root)
 
 
-# Import/Export Section
-st.sidebar.write('---')
+@st.cache_resource
+def load_cp_runner_from_save(uploaded_file):
+    save_data = pickle.loads(uploaded_file.getbuffer())
+    
+    dataset = load_dataset(save_data['dataset_name'])
+    
+    from cp_runner import CPRunner
+    return CPRunner.from_save(save_data, dataset)
 
+
+# Initialize dataset and cp_runner
 dataset = None
 cp_runner = None
 
-# Import button
-uploaded_file = st.sidebar.file_uploader(
-    "Import Results",
-    type=['pkl'],
-    help='Upload a saved results file (.pkl)'
-)
+# Sidebar tabs
+sidebar_tab1, sidebar_tab2, sidebar_tab3 = st.sidebar.tabs(['Evaluate', 'Import/Export', 'Results'])
 
-if uploaded_file is not None:
-    try:
-        save_data = pickle.loads(uploaded_file.getbuffer())
+# Evaluate tab content
+with sidebar_tab1:
+    param_dataset = st.selectbox(
+        'Dataset',
+        dataset_vals,
+    )
+    param_model = st.multiselect(
+        'Model',
+        model_vals,
+    )
 
-        dataset = load_dataset(save_data['dataset_name'])
+    param_score_alg = st.multiselect(
+        'Score algorithm',
+        score_alg_vals,
+    )
+    param_loss_fn = st.multiselect(
+        'Loss function',
+        loss_fn_vals,
+    )
+    param_hold_out_size = st.slider(
+        'Hold out size',
+        min_value=0.0,
+        max_value=1.0,
+        value=0.2,
+        step=0.01,
+    )
+    alpha_presets = [0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.25]
+    param_alpha = st.multiselect(
+        'Alpha',
+        alpha_presets,
+        default=[0.2],
+    )
+    param_replication = st.slider(
+        'Replication',
+        min_value=1,
+        max_value=100,
+        value=1,
+        step=1,
+    )
 
-        # Create a new CPRunner instance from the uploaded file
-        from cp_runner import CPRunner
+# Results tab content
+with sidebar_tab2:
+    # Import button
+    uploaded_file = st.file_uploader(
+        "Import Results",
+        type=['pkl'],
+        help='Upload a saved results file (.pkl)'
+    )
 
-        cp_runner = CPRunner.from_save(save_data, dataset)
+    if uploaded_file is not None:
+        try:
+            # Create a new CPRunner instance from the uploaded file using cached function
+            cp_runner = load_cp_runner_from_save(uploaded_file)
 
-        st.sidebar.success(f"✅ Imported results from {uploaded_file.name}")
-    except Exception as e:
-        st.sidebar.error(f"❌ Error importing results: {str(e)}")
-        cp_runner = None
+            st.success(f"✅ Imported results from {uploaded_file.name}")
+        except Exception as e:
+            st.error(f"❌ Error importing results: {str(e)}")
+            cp_runner = None
+
+    # Export button (enabled if results exist)
+    if cp_runner is not None and cp_runner.has_run and not cp_runner.has_error:
+        file_data, filename = cp_runner.export_results()
+        st.download_button(
+            label="Export Results",
+            data=file_data,
+            file_name=filename,
+            mime="application/octet-stream",
+            help='Download current results as .pkl file'
+        )
 
 # If no import, create CPRunner normally
 if cp_runner is None:
@@ -148,17 +182,6 @@ if cp_runner is None:
         st.stop()
     dataset = load_dataset(param_dataset)
     cp_runner = load_cp_runner(dataset, param_model, param_score_alg, param_loss_fn, param_alpha, param_replication)
-
-# Export button (enabled if results exist)
-if cp_runner.has_run and not cp_runner.has_error:
-    file_data, filename = cp_runner.export_results()
-    st.sidebar.download_button(
-        label="Export Results",
-        data=file_data,
-        file_name=filename,
-        mime="application/octet-stream",
-        help='Download current results as .pkl file'
-    )
 
 if not cp_runner.has_run:
     if cp_runner.progress is None:
@@ -216,6 +239,7 @@ def display_metrics_dataframe(df_subset):
             'loss_fn': st.column_config.TextColumn('Loss Function', pinned=True),
             'score_alg': st.column_config.TextColumn('Score Algorithm', pinned=True),
             'alpha': None,
+            'name': None,
             'coverage': st.column_config.NumberColumn('Coverage', format='%.3f',
                                                       help='Classification Coverage Score (target: 1-α)'),
             'mean_width': st.column_config.NumberColumn('Mean Width', format='%.3f',
@@ -304,6 +328,7 @@ for name, pred_results in results.items():
     alpha = float(alpha_part)
 
     metrics_data.append({
+        'name': name,
         'model': model,
         'loss_fn': loss_fn,
         'score_alg': score_alg,
@@ -312,31 +337,31 @@ for name, pred_results in results.items():
     })
 
 df = pd.DataFrame(metrics_data)
-df = calculate_performance_score(df)
 
 # Group by alpha and create tabs
 unique_alphas = sorted(df['alpha'].unique())
 
-if len(unique_alphas) > 1:
-    # Create tabs for each alpha
-    tab_names = [f"Alpha {alpha:.2f}" for alpha in unique_alphas]
-    tabs = st.tabs(tab_names)
+selected_results = []
+alpha_val = df['alpha'].iloc[0]
 
-    for i, alpha_val in enumerate(unique_alphas):
-        with tabs[i]:
-            st.subheader(f'Metrics')
+with sidebar_tab3:
+    if len(unique_alphas) > 1:
+        alpha_val = st.selectbox('Alpha', unique_alphas)
+        df = df[df['alpha'] == alpha_val].copy()
+    selected_results = st.multiselect(
+        'Displayed results',
+        df['name'].unique(),
+        default=df['name'].unique(),
+        format_func=lambda x: x.split('_alpha')[0],
+    )
 
-            # Filter data for this alpha and recalculate performance score
-            df_alpha = df[df['alpha'] == alpha_val].copy()
-            df_alpha = calculate_performance_score(df_alpha)
+st.subheader(f'Metrics')
 
-            display_metrics_dataframe(df_alpha)
-            display_alpha_plots(df_alpha, alpha_val, results, y_test)
-else:
-    # Single alpha - display normally
-    st.subheader('Metrics')
-    display_metrics_dataframe(df)
-    display_alpha_plots(df, df['alpha'].iloc[0], results, y_test)
+df_filtered = df[df['name'].isin(selected_results)].copy()
+df_filtered = calculate_performance_score(df_filtered)
+
+display_metrics_dataframe(df_filtered)
+display_alpha_plots(df_filtered, alpha_val, results, y_test)
 
 if param_replication == 1:
     st.subheader('Samples')

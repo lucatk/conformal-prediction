@@ -7,6 +7,7 @@ from typing import Callable
 
 import pandas as pd
 import runpod
+import torch
 from mapie.classification import MapieClassifier
 from numpy import ndarray
 from sklearn.base import ClassifierMixin
@@ -53,6 +54,8 @@ class CPRunner(Thread):
 
         self.terminate_after_run = False
 
+        self.selected_results = []
+
     def export_results(self):
         """Save results and metadata as bytes."""
         if not self.has_run:
@@ -65,6 +68,7 @@ class CPRunner(Thread):
             'score_alg': self.score_alg,
             'loss_fn': self.loss_fn,
             'alpha': self.alpha,
+            'num_replications': self.num_replications,
             'device': self.device,
             'preds': self.preds,
             'has_run': self.has_run,
@@ -89,13 +93,15 @@ class CPRunner(Thread):
             score_alg=save_data['score_alg'],
             loss_fn=save_data['loss_fn'],
             alpha=save_data['alpha'],
-            device=save_data['device']
+            replication=save_data['num_replications'],
+            device=save_data['device'],
         )
         
         # Restore the results
         cp_runner.preds = save_data['preds']
         cp_runner.has_run = save_data['has_run']
         cp_runner.has_error = save_data['has_error']
+        cp_runner.selected_results = [*cp_runner.preds.keys()]
         
         return cp_runner
 
@@ -187,6 +193,7 @@ class CPRunner(Thread):
             else:
                 raise
         # pbar_rep.display(msg="Run completed successfully.")
+        self.selected_results = [*self.preds.keys()]
         self.has_run = True
         if self.terminate_after_run:
             self.terminate_pod()
@@ -208,6 +215,9 @@ class CPRunner(Thread):
                 model = UnimodalResNet18(num_classes)
             else:
                 raise ValueError(f"Unknown model: {model_name}")
+            if torch.cuda.device_count() > 1:
+                print("Using", torch.cuda.device_count(), "GPUs")
+                model = nn.DataParallel(model)
             models_list.append(model)
         return models_list
 
@@ -281,6 +291,7 @@ class CPRunner(Thread):
                     conformity_score=score_alg,
                     cv='split',
                     n_jobs=-1,
+                    random_state=1,
                 )
             )
             for model_idx, loss_fn_idx, estimator in estimators
