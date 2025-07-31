@@ -117,7 +117,7 @@ class CPRunner(Thread):
             file_data, filename = self.export_results()
             with open(os.path.join(export_path, filename), 'wb') as f:
                 f.write(file_data)
-        runpod.stop_pod(runpod_pod_id)
+        # runpod.stop_pod(runpod_pod_id)
 
     def run(self):
         if self.has_run or (self.progress is not None and not self.has_error):
