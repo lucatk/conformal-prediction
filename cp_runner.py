@@ -290,7 +290,6 @@ class CPRunner(Thread):
                     estimator=estimator,
                     conformity_score=score_alg,
                     cv='split',
-                    n_jobs=-1,
                     random_state=1,
                 )
             )
