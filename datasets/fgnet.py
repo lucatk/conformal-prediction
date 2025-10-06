@@ -62,4 +62,4 @@ class FGNetDataset(Dataset):
         return len(self.train_dataset.classes)
 
     def get_class_labels(self) -> list[str]:
-        return ['0-6', '7-12', '13-19', '20-35', '36-50', '51-99']
+        return ['0-2', '3-10', '11-15', '16-23', '24-39', '40-69']
