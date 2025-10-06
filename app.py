@@ -163,17 +163,6 @@ with sidebar_tab2:
             st.error(f"❌ Error importing results: {str(e)}")
             cp_runner = None
 
-    # Export button (enabled if results exist)
-    if cp_runner is not None and cp_runner.has_run and not cp_runner.has_error:
-        file_data, filename = cp_runner.export_results()
-        st.download_button(
-            label="Export Results",
-            data=file_data,
-            file_name=filename,
-            mime="application/octet-stream",
-            help='Download current results as .pkl file'
-        )
-
 # If no import, create CPRunner normally
 if cp_runner is None:
     # Parameter validation
@@ -204,6 +193,20 @@ if not cp_runner.has_run:
         cp_runner.join()
         st.rerun()
     st.stop()
+
+    # Export button (enabled if results exist)
+if cp_runner is not None and cp_runner.has_run and not cp_runner.has_error:
+    with sidebar_tab2:
+        if st.button('Prepare export'):
+            file_data, filename = cp_runner.export_results()
+            st.text(filename)
+            st.download_button(
+                label="Export Results",
+                data=file_data,
+                file_name=filename,
+                mime="application/octet-stream",
+                help='Download current results as .pkl file'
+            )
 
 # -- RESULTS
 X_test, y_test = cp_runner.dataset.get_test_data()
