@@ -35,13 +35,13 @@ class AdienceDataset(Dataset):
             root=root_path,
             train=True,
             target_transform=np.array,
-            transform=Compose([Lambda(resize_by_scale), ToTensor()]),  # Resize by scale (0.5)
+            transform=Compose([Lambda(resize_by_scale), ToTensor()]),  # Resize by scale
         )
         self.test_dataset = Adience(
             root=root_path,
             train=False,
             target_transform=np.array,
-            transform=Compose([Lambda(resize_by_scale), ToTensor()]),  # Resize by scale (0.5)
+            transform=Compose([Lambda(resize_by_scale), ToTensor()]),  # Resize by scale
         )
         self.prepare_data()
 
