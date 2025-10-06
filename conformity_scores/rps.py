@@ -1,9 +1,8 @@
-from typing import Optional
+from typing import Optional, Union, cast
 
 from mapie._machine_precision import EPSILON
 from mapie.conformity_scores.classification import BaseClassificationScore
-from mapie.conformity_scores.sets.utils import check_proba_normalized
-from mapie.estimator.classifier import EnsembleClassifier
+from sklearn.model_selection import BaseCrossValidator
 import numpy as np
 from numpy.typing import NDArray
 
@@ -28,10 +27,11 @@ class RPSConformityScore(BaseClassificationScore):
         super().__init__()
 
     def get_conformity_scores(
-        self,
-        y: NDArray,
-        y_pred: NDArray,
-        **kwargs
+            self,
+            y: NDArray,
+            y_pred: NDArray,
+            y_enc: Optional[NDArray] = None,
+            **kwargs
     ) -> NDArray:
         """
         Calculate the RPS conformity score for each prediction.
@@ -39,23 +39,29 @@ class RPSConformityScore(BaseClassificationScore):
         Parameters
         ----------
         y: NDArray of shape (n_samples,)
-            True target labels (as integers).
+            Observed target values.
 
         y_pred: NDArray of shape (n_samples, n_classes)
             Predicted probabilities per class.
+
+        y_enc: NDArray of shape (n_samples,)
+            Target values as normalized encodings.
 
         Returns
         -------
         NDArray of shape (n_samples,)
             RPS conformity scores.
         """
+        # Casting
+        y_enc = cast(NDArray, y_enc)
+
         n_samples, n_classes = y_pred.shape
         conformity_scores = np.empty(n_samples, dtype="float")
 
         for i in range(n_samples):
             probs = y_pred[i]
             outcome = np.zeros(n_classes)
-            outcome[y[i]] = 1
+            outcome[y_enc[i]] = 1
             cum_probs = np.cumsum(probs)
             cum_outcome = np.cumsum(outcome)
             rps = np.sum((cum_probs - cum_outcome) ** 2) / (n_classes - 1)
@@ -64,29 +70,40 @@ class RPSConformityScore(BaseClassificationScore):
         return conformity_scores
 
     def get_predictions(
-        self,
-        X: NDArray,
-        alpha_np: NDArray,
-        estimator: EnsembleClassifier,
-        agg_scores: Optional[str] = "mean",
-        **kwargs
+            self,
+            X: NDArray,
+            alpha_np: NDArray,
+            y_pred_proba: NDArray,
+            cv: Optional[Union[int, str, BaseCrossValidator]],
+            agg_scores: Optional[str] = "mean",
+            **kwargs
     ) -> NDArray:
         """
-        Predict class probabilities and replicate for each alpha value.
+        Just processes the passed y_pred_proba.
 
         Parameters
         ----------
         X: NDArray of shape (n_samples, n_features)
+            Observed feature values (not used since predictions are passed).
         alpha_np: NDArray of shape (n_alpha,)
-        estimator: EnsembleClassifier
-        agg_scores: Optional[str] Method to aggregate the scores from the base estimators. By default ``"mean"``.
+            NDArray of floats between ``0`` and ``1``, represents the
+            uncertainty of the confidence interval.
+        y_pred_proba: NDArray
+            Predicted probabilities from the estimator.
+        cv: Optional[Union[int, str, BaseCrossValidator]]
+            Cross-validation strategy used by the estimator.
+        agg_scores: Optional[str]
+            Method to aggregate the scores from the base estimators.
+            If "mean", the scores are averaged. If "crossval", the scores are
+            obtained from cross-validation.
+
+            By default ``"mean"``.
 
         Returns
         -------
-        NDArray of shape (n_samples, n_classes, n_alpha)
+        NDArray
+            Array of predictions.
         """
-        y_pred_proba = estimator.predict(X, agg_scores='mean')
-        y_pred_proba = check_proba_normalized(y_pred_proba, axis=1)
         if agg_scores != "crossval":
             y_pred_proba = np.repeat(
                 y_pred_proba[:, :, np.newaxis], len(alpha_np), axis=2
@@ -95,82 +112,117 @@ class RPSConformityScore(BaseClassificationScore):
         return y_pred_proba
 
     def get_conformity_score_quantiles(
-        self,
-        conformity_scores: NDArray,
-        alpha_np: NDArray,
-        estimator: EnsembleClassifier,
-        **kwargs
+            self,
+            conformity_scores: NDArray,
+            alpha_np: NDArray,
+            cv: Optional[Union[int, str, BaseCrossValidator]],
+            agg_scores: Optional[str] = "mean",
+            **kwargs
     ) -> NDArray:
         """
-        Return quantiles of RPS scores to build prediction sets.
+        Get the quantiles of the conformity scores for each uncertainty level.
 
         Parameters
         ----------
         conformity_scores: NDArray of shape (n_samples,)
+            Conformity scores for each sample.
         alpha_np: NDArray of shape (n_alpha,)
-        estimator: EnsembleClassifier
+            NDArray of floats between 0 and 1, representing the uncertainty
+            of the confidence interval.
+        cv: Optional[Union[int, str, BaseCrossValidator]]
+            Cross-validation strategy used by the estimator.
+        agg_scores: Optional[str]
+            Method to aggregate the scores from the base estimators.
+            If "mean", the scores are averaged. If "crossval", the scores are
+            obtained from cross-validation.
+
+            By default ``"mean"``.
 
         Returns
         -------
-        NDArray of shape (n_alpha,)
+        NDArray
+            Array of quantiles with respect to alpha_np.
         """
-        return np.quantile(conformity_scores, 1 - alpha_np, axis=0)
+        n = len(conformity_scores)
+
+        if cv == "prefit" or agg_scores in ["mean"]:
+            quantiles_ = _compute_quantiles(
+                conformity_scores,
+                alpha_np
+            )
+        else:
+            quantiles_ = (n + 1) * (1 - alpha_np)
+
+        return quantiles_
 
     def get_prediction_sets(
-        self,
-        y_pred_proba: NDArray,
-        conformity_scores: NDArray,
-        alpha_np: NDArray,
-        estimator: EnsembleClassifier,
-        agg_scores: Optional[str] = "mean",
-        **kwargs
+            self,
+            y_pred_proba: NDArray,
+            conformity_scores: NDArray,
+            alpha_np: NDArray,
+            cv: Optional[Union[int, str, BaseCrossValidator]],
+            agg_scores: Optional[str] = "mean",
+            **kwargs
     ) -> NDArray:
         """
-        Generate prediction sets for each sample using the RPS conformity score.
+        Generate prediction sets based on the probability predictions,
+        the conformity scores and the uncertainty level.
 
         Parameters
         ----------
-        y_pred_proba : NDArray of shape (n_samples, n_classes)
-            Predicted class probabilities.
-        conformity_scores : NDArray of shape (n_samples,)
-            Conformity scores computed from calibration data (not used here directly).
-        alpha_np : NDArray of shape (n_alpha,)
-            Miscoverage levels (1 - confidence levels).
-        estimator : EnsembleClassifier
-            Fitted ensemble estimator.
-        agg_scores : str, default="mean"
-            Not used here, included for compatibility.
-        kwargs : dict
-            Additional keyword arguments.
+        y_pred_proba: NDArray of shape (n_samples, n_classes)
+            Target prediction.
+        conformity_scores: NDArray of shape (n_samples,)
+            Conformity scores for each sample.
+        alpha_np: NDArray of shape (n_alpha,)
+            NDArray of floats between 0 and 1, representing the uncertainty
+            of the confidence interval.
+        cv: Optional[Union[int, str, BaseCrossValidator]]
+            Cross-validation strategy used by the estimator.
+        agg_scores: Optional[str]
+            Method to aggregate the scores from the base estimators.
+            If "mean", the scores are averaged. If "crossval", the scores are
+            obtained from cross-validation.
+
+            By default ``"mean"``.
 
         Returns
         -------
-        NDArray of shape (n_samples, n_classes, n_alpha)
-            Boolean prediction sets.
+        NDArray
+            Array of quantiles with respect to alpha_np.
         """
-        n_samples, n_classes, n_alpha = y_pred_proba.shape
+        n = len(conformity_scores)
 
-        # Thresholds from quantiles
-        thresholds = self.quantiles_  # shape: (n_alpha,)
-        if thresholds is None:
-            raise ValueError("`quantiles_` must be set before calling get_prediction_sets.")
+        if agg_scores == "mean":
+            n_samples, n_classes, n_alpha = y_pred_proba.shape
 
-        # Initialize output
-        prediction_sets = np.zeros((n_samples, n_classes, n_alpha), dtype=bool)
+            # Thresholds from quantiles
+            thresholds = self.quantiles_  # shape: (n_alpha,)
+            if thresholds is None:
+                raise ValueError("`quantiles_` must be set before calling get_prediction_sets.")
 
-        # For each class, simulate it being the true label and compute RPS
-        for alpha_idx, threshold in enumerate(thresholds):
-            for class_idx in range(n_classes):
-                # Binary outcomes with 1 at current class position
-                outcomes = np.zeros((n_samples, n_classes))
-                outcomes[:, class_idx] = 1
+            # Initialize output
+            prediction_sets = np.zeros((n_samples, n_classes, n_alpha), dtype=bool)
 
-                # Compute RPS assuming each class is true
-                cum_probs = np.cumsum(y_pred_proba[:, :, alpha_idx], axis=1)
-                cum_outcomes = np.cumsum(outcomes, axis=1)
-                rps_scores = np.sum((cum_probs - cum_outcomes) ** 2, axis=1) / (n_classes - 1)
+            # For each class, simulate it being the true label and compute RPS
+            for alpha_idx, threshold in enumerate(thresholds):
+                for class_idx in range(n_classes):
+                    # Binary outcomes with 1 at current class position
+                    outcomes = np.zeros((n_samples, n_classes))
+                    outcomes[:, class_idx] = 1
 
-                # Compare against thresholds to include in prediction set
-                prediction_sets[:, class_idx, alpha_idx] = rps_scores <= threshold + EPSILON
+                    # Compute RPS assuming each class is true
+                    cum_probs = np.cumsum(y_pred_proba[:, :, alpha_idx], axis=1)
+                    cum_outcomes = np.cumsum(outcomes, axis=1)
+                    rps_scores = np.sum((cum_probs - cum_outcomes) ** 2, axis=1) / (n_classes - 1)
+
+                    # Compare against thresholds to include in prediction set
+                    prediction_sets[:, class_idx, alpha_idx] = rps_scores <= threshold + EPSILON
+        else:
+            # Crossval aggregation not implemented for RPS
+            raise NotImplementedError(
+                "Crossval aggregation is not implemented for RPS conformity score. "
+                "Please use agg_scores='mean' instead."
+            )
 
         return prediction_sets
