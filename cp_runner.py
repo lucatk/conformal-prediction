@@ -8,19 +8,19 @@ from typing import Callable
 import pandas as pd
 import runpod
 import torch
+from dlordinal.output_layers import COPOC
 from mapie.classification import MapieClassifier
 from numpy import ndarray
 from sklearn.base import ClassifierMixin
-from skorch.callbacks import Callback
+from skorch.callbacks import Callback, EarlyStopping
 from streamlit.elements.progress import ProgressMixin
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
 from torchvision import models
-from tqdm.contrib.telegram import tqdm
+from tqdm import tqdm
 
 from datasets.base_dataset import Dataset
-from models.resnet18_uni import UnimodalResNet18
 from util import SoftmaxNeuralNetClassifier
 
 import streamlit as st
@@ -34,7 +34,10 @@ if runpod_token is not None:
 
 
 class CPRunner(Thread):
-    max_epochs = 25
+    lr = 1e-3
+    batch_size = 128
+    max_epochs = 100
+    early_stop_epochs = 40
 
     def __init__(self, dataset: Dataset, model: list[str], score_alg: list[str], loss_fn: list[str], alpha: list[float],
                  replication: int, device: str):
@@ -162,6 +165,7 @@ class CPRunner(Thread):
                         pbar.set_description(f'epoch {cur_epoch}/{self.max_epochs}')
 
                     predictor.estimator.set_params(callbacks=[
+                        EarlyStopping(patience=self.early_stop_epochs, monitor='train_loss'),
                         ('epoch_progress', EpochProgress(on_train_begin, on_epoch_begin, on_train_end))
                     ])
                     predictor.fit(X_train, y_train)
@@ -208,11 +212,12 @@ class CPRunner(Thread):
             if model_name == 'resnet18':
                 model = models.resnet18(weights="IMAGENET1K_V1")
                 model.fc = nn.Linear(model.fc.in_features, num_classes)
+            elif model_name == 'resnet18-uni':
+                model = models.resnet18(weights="IMAGENET1K_V1")
+                model.fc = nn.Sequential(nn.Linear(model.fc.in_features, num_classes), COPOC())
             elif model_name == 'resnet50':
                 model = models.resnet50(weights="IMAGENET1K_V1")
                 model.fc = nn.Linear(model.fc.in_features, num_classes)
-            elif model_name == 'resnet18-uni':
-                model = UnimodalResNet18(num_classes)
             else:
                 raise ValueError(f"Unknown model: {model_name}")
             if torch.cuda.device_count() > 1:
@@ -231,8 +236,8 @@ class CPRunner(Thread):
                 module=model.to(self.device),
                 criterion=loss_fn.to(self.device),
                 optimizer=AdamW,
-                lr=1e-3,
-                batch_size=32,
+                lr=self.lr,
+                batch_size=self.batch_size,
                 train_split=None,
                 max_epochs=self.max_epochs,
                 device=self.device,
