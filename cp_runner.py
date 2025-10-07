@@ -8,7 +8,7 @@ from typing import Callable
 import pandas as pd
 import torch
 from dlordinal.output_layers import COPOC
-from mapie.classification import MapieClassifier
+from mapie.classification import SplitConformalClassifier
 from numpy import ndarray
 from sklearn.base import ClassifierMixin
 from skorch.callbacks import Callback, EarlyStopping
@@ -31,7 +31,7 @@ data_root = os.environ['DATA_ROOT'] if 'DATA_ROOT' in os.environ else '.'
 class CPRunner(Thread):
     lr = 1e-3
     batch_size = 128
-    max_epochs = 100
+    max_epochs = 25
     early_stop_epochs = 40
 
     def __init__(self, dataset: Dataset, model: list[str], score_alg: list[str], loss_fn: list[str], alpha: list[float],
@@ -58,7 +58,7 @@ class CPRunner(Thread):
         """Save results and metadata as bytes."""
         if not self.has_run:
             raise RuntimeError("CPRunner has not been run yet. No results to save.")
-        
+
         # Save both results and metadata
         save_data = {
             'dataset_name': self.dataset.name,
@@ -83,7 +83,7 @@ class CPRunner(Thread):
     @staticmethod
     def from_save(save_data: any, dataset: Dataset):
         """Create a new CPRunner instance from saved bytes."""
-        
+
         # Create new instance with saved metadata
         cp_runner = CPRunner(
             dataset=dataset,
@@ -94,13 +94,13 @@ class CPRunner(Thread):
             replication=save_data['num_replications'],
             device=save_data['device'],
         )
-        
+
         # Restore the results
         cp_runner.preds = save_data['preds']
         cp_runner.has_run = save_data['has_run']
         cp_runner.has_error = save_data['has_error']
         cp_runner.selected_results = [*cp_runner.preds.keys()]
-        
+
         return cp_runner
 
     def set_export_after_run(self, export: bool):
@@ -131,6 +131,7 @@ class CPRunner(Thread):
                 predictors = self._get_cp_predictors(estimators)
 
                 X_train, y_train = self.dataset.get_train_data()
+                X_hold_out, y_hold_out = self.dataset.get_hold_out_data()
                 print("X_train shape:", X_train.shape)
                 print("y_train shape:", y_train.shape)
                 for idx, (name, (_, predictor)) in enumerate((pbar_fit := tqdm(predictors.items(), leave=False))):
@@ -158,11 +159,12 @@ class CPRunner(Thread):
                         pbar.update()
                         pbar.set_description(f'epoch {cur_epoch}/{self.max_epochs}')
 
-                    predictor.estimator.set_params(callbacks=[
+                    predictor._estimator.set_params(callbacks=[
                         EarlyStopping(patience=self.early_stop_epochs, monitor='train_loss'),
                         ('epoch_progress', EpochProgress(on_train_begin, on_epoch_begin, on_train_end))
                     ])
                     predictor.fit(X_train, y_train)
+                    predictor.conformalize(X_hold_out, y_hold_out)
                 pbar_fit.close()
                 free_garbage()
 
@@ -179,7 +181,7 @@ class CPRunner(Thread):
                                       desc)
                     pbar_pred.set_description(desc)
 
-                    y_pred, y_pred_set = predictor.predict(X_test, alpha=alpha)
+                    y_pred, y_pred_set = predictor.predict_set(X_test)
                     self.preds[name].append((y_pred, y_pred_set))
                 pbar_pred.close()
                 free_garbage()
@@ -268,7 +270,7 @@ class CPRunner(Thread):
                 from mapie.conformity_scores import RAPSConformityScore
                 score_algs.append(RAPSConformityScore(size_raps=0.2))
             elif score_alg == 'RPS':
-                from conformity_scores.rps import RPSConformityScore
+                from mapie.conformity_scores import RPSConformityScore
                 score_algs.append(RPSConformityScore())
             else:
                 raise ValueError(f"Unknown score algorithm: {score_alg}")
@@ -279,11 +281,11 @@ class CPRunner(Thread):
         return {
             f'{self.model[model_idx]}_{self.loss_fn[loss_fn_idx]}_{self.score_alg[score_alg_idx]}_alpha{alpha:.2f}': (
                 alpha,
-                MapieClassifier(
+                SplitConformalClassifier(
                     estimator=estimator,
                     conformity_score=score_alg,
-                    cv='split',
                     random_state=1,
+                    prefit=False
                 )
             )
             for model_idx, loss_fn_idx, estimator in estimators

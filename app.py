@@ -75,9 +75,9 @@ def load_cp_runner(dataset, model, score_alg, loss_fn, alpha, replication):
 
 
 @st.cache_resource
-def load_dataset(dataset):
+def load_dataset(dataset, hold_out_size):
     from datasets import loader
-    return loader.load_dataset(dataset, data_root)
+    return loader.load_dataset(dataset, hold_out_size, data_root)
 
 
 @st.cache_resource
@@ -162,7 +162,7 @@ if cp_runner is None:
     if param_dataset == '' or param_model == [] or param_score_alg == [] or param_loss_fn == []:
         st.warning('Please input all parameters.')
         st.stop()
-    dataset = load_dataset(param_dataset)
+    dataset = load_dataset(param_dataset, param_hold_out_size)
     cp_runner = load_cp_runner(dataset, param_model, param_score_alg, param_loss_fn, param_alpha, param_replication)
 
 if not cp_runner.has_run:

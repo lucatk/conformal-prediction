@@ -1,6 +1,7 @@
 #dlordinal==2.4.1
 dlordinal @ git+https://github.com/stefanahaas41/dlordinal@enhancement/129-unimodal-copoc
-MAPIE==1.1.0
+#MAPIE==1.1.0
+MAPIE @ git+https://github.com/lucatk/MAPIE@rps-score
 numpy==1.26.4
 pandas==2.2.3
 scikit-learn==1.5.2

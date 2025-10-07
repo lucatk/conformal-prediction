@@ -14,6 +14,13 @@ class Dataset(ABC):
         pass
 
     @abstractmethod
+    def get_hold_out_data(self) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Returns the hold-out data.
+        """
+        pass
+
+    @abstractmethod
     def get_test_data(self) -> tuple[np.ndarray, np.ndarray]:
         """
         Returns the test data.
