@@ -26,9 +26,6 @@ load_dotenv()
 
 # -- PARAMETERS
 
-runpod_token = os.getenv('RUNPOD_API_KEY')
-runpod_pod_id = os.getenv('RUNPOD_POD_ID')
-
 data_root = os.environ['DATA_ROOT'] if 'DATA_ROOT' in os.environ else '.'
 
 dataset_vals = ['FGNet', 'Adience', 'RetinaMNIST']
@@ -56,10 +53,6 @@ torch.classes.__path__ = []
 seed = 1
 numpy.random.seed(seed)
 torch.manual_seed(seed)
-
-
-def has_runpod_creds():
-    return runpod_token is not None and runpod_pod_id is not None
 
 
 @st.cache_resource(hash_funcs={
@@ -175,9 +168,9 @@ if cp_runner is None:
 if not cp_runner.has_run:
     if cp_runner.progress is None:
         st.write('The results for these parameters have not been evaluated yet.')
-        terminate_after_run = st.checkbox("Terminate after run and export results to disk") if has_runpod_creds() else False
+        export_after_run = st.checkbox("Export results to disk after run finishes")
         if st.button('Start evaluation'):
-            cp_runner.set_terminate_after_run(terminate_after_run)
+            cp_runner.set_export_after_run(export_after_run)
 
             add_script_run_ctx(cp_runner)
             cp_runner.start()

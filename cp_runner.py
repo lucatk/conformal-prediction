@@ -1,12 +1,11 @@
+import gc
 import os
 import pickle
-import traceback
 from pathlib import Path
 from threading import Thread
 from typing import Callable
 
 import pandas as pd
-import runpod
 import torch
 from dlordinal.output_layers import COPOC
 from mapie.classification import MapieClassifier
@@ -26,11 +25,7 @@ from util import SoftmaxNeuralNetClassifier
 import streamlit as st
 
 
-runpod_token = os.getenv('RUNPOD_API_KEY')
-runpod_pod_id = os.getenv('RUNPOD_POD_ID')
 data_root = os.environ['DATA_ROOT'] if 'DATA_ROOT' in os.environ else '.'
-if runpod_token is not None:
-    runpod.api_key = runpod_token
 
 
 class CPRunner(Thread):
@@ -55,7 +50,7 @@ class CPRunner(Thread):
         self.num_replications = replication
         self.device = device
 
-        self.terminate_after_run = False
+        self.export_after_run = False
 
         self.selected_results = []
 
@@ -108,19 +103,18 @@ class CPRunner(Thread):
         
         return cp_runner
 
-    def set_terminate_after_run(self, terminate: bool):
-        """Set whether to terminate the pod after run."""
-        self.terminate_after_run = terminate
+    def set_export_after_run(self, export: bool):
+        """Set whether to auto-export results after run."""
+        self.export_after_run = export
 
-    def terminate_pod(self):
-        print(f'Run {'failed. T' if self.has_error else 'succeeded. Exporting results and t'}erminating pod...')
+    def auto_export(self):
+        print('Run succeeded. Auto-exporting results...')
         if not self.has_error:
             export_path = str(Path(data_root + '/exports').resolve())
             os.makedirs(export_path, exist_ok=True)
             file_data, filename = self.export_results()
             with open(os.path.join(export_path, filename), 'wb') as f:
                 f.write(file_data)
-        # runpod.stop_pod(runpod_pod_id)
 
     def run(self):
         if self.has_run or (self.progress is not None and not self.has_error):
@@ -170,6 +164,7 @@ class CPRunner(Thread):
                     ])
                     predictor.fit(X_train, y_train)
                 pbar_fit.close()
+                free_garbage()
 
                 self.set_progress(0.5, progress_bar, f'[Replication {rep+1}] Predicting (0/{len(predictors)})...')
 
@@ -187,20 +182,16 @@ class CPRunner(Thread):
                     y_pred, y_pred_set = predictor.predict(X_test, alpha=alpha)
                     self.preds[name].append((y_pred, y_pred_set))
                 pbar_pred.close()
+                free_garbage()
         except:
             # pbar_rep.display(msg=f'[Replication {rep+1}] Error occurred.')
             self.has_error = True
-            if self.terminate_after_run:
-                traceback.print_exc()
-                self.terminate_pod()
-                return
-            else:
-                raise
+            raise
         # pbar_rep.display(msg="Run completed successfully.")
         self.selected_results = [*self.preds.keys()]
         self.has_run = True
-        if self.terminate_after_run:
-            self.terminate_pod()
+        if self.export_after_run:
+            self.auto_export()
 
     def set_progress(self, progress, progress_bar: ProgressMixin, text: str = None):
         self.progress = progress
@@ -220,9 +211,6 @@ class CPRunner(Thread):
                 model.fc = nn.Linear(model.fc.in_features, num_classes)
             else:
                 raise ValueError(f"Unknown model: {model_name}")
-            if torch.cuda.device_count() > 1:
-                print("Using", torch.cuda.device_count(), "GPUs")
-                model = nn.DataParallel(model)
             models_list.append(model)
         return models_list
 
@@ -328,3 +316,8 @@ class EpochProgress(Callback):
 
     def on_train_end(self, net, **kwargs):
         self._on_train_end(net)
+
+
+def free_garbage():
+    torch.cuda.empty_cache()
+    gc.collect()
