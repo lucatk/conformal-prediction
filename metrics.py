@@ -3,7 +3,7 @@ from collections import OrderedDict
 
 import numpy as np
 from numpy import ndarray
-from mapie.metrics import classification_coverage_score, classification_mean_width_score
+from mapie.metrics.classification import classification_coverage_score, classification_mean_width_score
 
 
 class Metrics(NamedTuple):
