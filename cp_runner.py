@@ -31,7 +31,7 @@ data_root = os.environ['DATA_ROOT'] if 'DATA_ROOT' in os.environ else '.'
 class CPRunner(Thread):
     lr = 1e-3
     batch_size = 128
-    max_epochs = 25
+    max_epochs = 100
     early_stop_epochs = 40
 
     def __init__(self, dataset: Dataset, model: list[str], score_alg: list[str], loss_fn: list[str], alpha: list[float],
@@ -284,6 +284,7 @@ class CPRunner(Thread):
                 SplitConformalClassifier(
                     estimator=estimator,
                     conformity_score=score_alg,
+                    confidence_level=1-alpha,
                     random_state=1,
                     prefit=False
                 )
