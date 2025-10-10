@@ -1,23 +1,28 @@
 import os
 import pickle
 
+import matplotlib
 import numpy
-import pandas as pd
 import streamlit as st
 import torch
 from streamlit.runtime.scriptrunner_utils.script_run_context import add_script_run_ctx
 
+from cp_runner import CPRunner
 from datasets.adience import AdienceDataset
+from datasets.base_dataset import Dataset
 from datasets.fgnet import FGNetDataset
 from datasets.retina_mnist import RetinaMNISTDataset
-from metrics import get_metrics_across_reps
-from util import frame_image_samples, st_narrow
+from metrics import get_results_metrics
+from util import frame_image_samples, st_narrow, render_plot_download_button
 from plots import (
     plot_overall_performance_comparison,
     plot_individual_metrics_grid,
     plot_size_stratified_coverage,
     plot_model_performance_metrics,
     plot_prediction_set_size_distribution,
+    plot_coverage_across_alphas,
+    plot_classification_mean_width_across_alphas, plot_regression_mean_width_across_alphas,
+    plot_non_contiguous_perc_across_alphas, plot_ssc_score_across_alphas,
 )
 
 from dotenv import load_dotenv
@@ -54,6 +59,15 @@ seed = 1
 numpy.random.seed(seed)
 torch.manual_seed(seed)
 
+matplotlib.use("pgf")
+matplotlib.rcParams.update({
+    "pgf.texsystem": "pdflatex",
+    'font.family': 'serif',
+    'font.size' : 10,
+    'text.usetex': False,
+    'pgf.rcfonts': False
+})
+
 
 @st.cache_resource(hash_funcs={
     FGNetDataset: lambda d: d.name,
@@ -62,7 +76,6 @@ torch.manual_seed(seed)
     list[str]: lambda l: hash(frozenset(l))
 })
 def load_cp_runner(dataset, model, score_alg, loss_fn, alpha, replication):
-    from cp_runner import CPRunner
     return CPRunner(
         dataset,
         model,
@@ -84,15 +97,20 @@ def load_dataset(dataset, hold_out_size):
 def load_cp_runner_from_save(uploaded_file):
     save_data = pickle.loads(uploaded_file.getbuffer())
     
-    dataset = load_dataset(save_data['dataset_name'])
+    dataset = load_dataset(save_data['dataset_name'], 0.1)  # hold_out_size doesn't matter here
     
     from cp_runner import CPRunner
     return CPRunner.from_save(save_data, dataset)
 
 
+@st.cache_data
+def load_results_metrics(results, y_test, mode):
+    return get_results_metrics(results, y_test, mode)
+
+
 # Initialize dataset and cp_runner
-dataset = None
-cp_runner = None
+dataset: Dataset = None
+cp_runner: CPRunner = None
 
 # Sidebar tabs
 sidebar_tab1, sidebar_tab2, sidebar_tab3 = st.sidebar.tabs(['Evaluate', 'Import/Export', 'Results'])
@@ -312,68 +330,91 @@ def display_alpha_plots(df_alpha, alpha_val, results, y_test):
         st.pyplot(fig7, use_container_width=False)
 
 
-# Get metrics for all methods
-metrics_data = []
-for name, pred_results in results.items():
-    metrics = get_metrics_across_reps(y_test, pred_results)
-    # Parse the format: model_loss_fn_score_alg_alphaX.XX
-    alpha_part = name.split('_alpha')[-1]
-    base_name = name.replace(f'_alpha{alpha_part}', '')
-    parts = base_name.split('_', 2)
-    model, loss_fn, score_alg = parts[0], parts[1], parts[2]
-    alpha = float(alpha_part)
-
-    metrics_data.append({
-        'name': name,
-        'model': model,
-        'loss_fn': loss_fn,
-        'score_alg': score_alg,
-        'alpha': alpha,
-        **metrics._asdict()
-    })
-
-df = pd.DataFrame(metrics_data)
-
-# Group by alpha and create tabs
-unique_alphas = sorted(df['alpha'].unique())
-
-selected_results = []
-alpha_val = df['alpha'].iloc[0]
-
 with sidebar_tab3:
-    if len(unique_alphas) > 1:
-        alpha_val = st.selectbox('Alpha', unique_alphas)
-        df = df[df['alpha'] == alpha_val].copy()
-    selected_results = st.multiselect(
-        'Displayed results',
-        df['name'].unique(),
-        default=df['name'].unique(),
-        format_func=lambda x: x.split('_alpha')[0],
+    option_map = {
+        0: "Per alpha",
+        1: "Per method",
+    }
+    agg_mode = st.pills(
+        "Aggregate",
+        options=option_map.keys(),
+        format_func=lambda option: option_map[option],
+        default=0,
+        selection_mode="single",
     )
+    if agg_mode == 0:
+        df = load_results_metrics(results, y_test, 'mean')
 
-st.subheader(f'Metrics')
+        unique_alphas = sorted(df['alpha'].unique())
+        selected_results = []
+        alpha_val = df['alpha'].iloc[0]
 
-df_filtered = df[df['name'].isin(selected_results)].copy()
-df_filtered = calculate_performance_score(df_filtered)
+        if len(unique_alphas) > 1:
+            alpha_val = st.selectbox('Alpha', unique_alphas)
+            df = df[df['alpha'] == alpha_val].copy()
+        selected_results = st.multiselect(
+            'Displayed results',
+            df['name'].unique(),
+            default=df['name'].unique(),
+            format_func=lambda x: x.split('_alpha')[0],
+        )
 
-display_metrics_dataframe(df_filtered)
-display_alpha_plots(df_filtered, alpha_val, results, y_test)
+        df_filtered = df[df['name'].isin(selected_results)].copy()
+        df_filtered = calculate_performance_score(df_filtered)
+    elif agg_mode == 1:
+        # pass
+        df = load_results_metrics(results, y_test, 'collect')
 
-if param_replication == 1:
-    st.subheader('Samples')
+        loss_fn = st.multiselect('Loss function', df['loss_fn'].unique(), key='metrics_loss_fn')
+        score_alg = st.multiselect('Score algorithm', df['score_alg'].unique(), key='metrics_score_alg')
 
-    samples_df = frame_image_samples(
-        X_test,
-        y_test,
-        {name: pred[0][1] for name, pred in results.items()},
-        cp_runner.dataset.get_class_labels()
-    )
+        df_filtered = df[(df['loss_fn'].isin(loss_fn)) & (df['score_alg'].isin(score_alg))].copy()
+        df_filtered['method'] = df_filtered['loss_fn'] + '_' + df_filtered['score_alg']
 
-    st.dataframe(
-        samples_df,
-        column_config={
-            'image': st.column_config.ImageColumn(),
-        },
-        row_height=64,
-        height=600,
-    )
+if agg_mode == 0:
+    st.subheader(f'Metrics')
+
+    display_metrics_dataframe(df_filtered)
+    display_alpha_plots(df_filtered, alpha_val, results, y_test)
+
+    if param_replication == 1:
+        st.subheader('Samples')
+
+        samples_df = frame_image_samples(
+            X_test,
+            y_test,
+            {name: pred[0][1] for name, pred in results.items()},
+            cp_runner.dataset.get_class_labels()
+        )
+
+        st.dataframe(
+            samples_df,
+            column_config={
+                'image': st.column_config.ImageColumn(),
+            },
+            row_height=64,
+            height=600,
+        )
+elif agg_mode == 1:
+    st.subheader('Plots')
+
+    f_ccs = plot_coverage_across_alphas(df_filtered)
+    st.pyplot(f_ccs)
+    render_plot_download_button('ccs', loss_fn, score_alg, cp_runner.dataset.name, str(cp_runner.model), f_ccs)
+
+    f_ssc_score = plot_ssc_score_across_alphas(df_filtered)
+    st.pyplot(f_ssc_score)
+    render_plot_download_button('ssc_score', loss_fn, score_alg, cp_runner.dataset.name, str(cp_runner.model), f_ssc_score)
+
+    f_cmws = plot_classification_mean_width_across_alphas(df_filtered)
+    st.pyplot(f_cmws)
+    render_plot_download_button('cmws', loss_fn, score_alg, cp_runner.dataset.name, str(cp_runner.model), f_cmws)
+
+    f_rmws = plot_regression_mean_width_across_alphas(df_filtered)
+    st.pyplot(f_rmws)
+    render_plot_download_button('rmws', loss_fn, score_alg, cp_runner.dataset.name, str(cp_runner.model), f_rmws)
+
+    f_cv = plot_non_contiguous_perc_across_alphas(df_filtered)
+    st.pyplot(f_cv)
+    render_plot_download_button('cv', loss_fn, score_alg, cp_runner.dataset.name, str(cp_runner.model), f_cv)
+

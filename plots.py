@@ -1,8 +1,11 @@
+from typing import Tuple
+
+import matplotlib
 import numpy as np
+import pandas
 import pandas as pd
 import matplotlib.pyplot as plt
-import streamlit as st
-
+import seaborn.objects as so
 
 def plot_overall_performance_comparison(df_performance, param_alpha):
     """Create the overall performance comparison plot with three y-axes:
@@ -74,7 +77,7 @@ def plot_classification_mean_width_score(df):
     """Create the Classification Mean Width Score (CMWS) plot."""
     fig, ax = plt.subplots(figsize=(8, 5))
     x_pos = np.arange(len(df))
-    
+
     ax.bar(x_pos, df['mean_width'], alpha=0.7, color='purple')
     ax.set_xlabel('Methods', fontsize=12)
     ax.set_ylabel('Mean Prediction Set Size', fontsize=12)
@@ -84,7 +87,7 @@ def plot_classification_mean_width_score(df):
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
-    
+
     return fig
 
 
@@ -92,7 +95,7 @@ def plot_regression_mean_width_score(df):
     """Create the Regression Mean Width Score (RMWS) plot."""
     fig, ax = plt.subplots(figsize=(8, 5))
     x_pos = np.arange(len(df))
-    
+
     ax.bar(x_pos, df['mean_range'], alpha=0.7, color='orange')
     ax.set_xlabel('Methods', fontsize=12)
     ax.set_ylabel('Mean Interval Size/Range', fontsize=12)
@@ -102,7 +105,7 @@ def plot_regression_mean_width_score(df):
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
-    
+
     return fig
 
 
@@ -110,7 +113,7 @@ def plot_classification_coverage_score(df, param_alpha):
     """Create the Classification Coverage Score (CCS) plot."""
     fig, ax = plt.subplots(figsize=(8, 5))
     x_pos = np.arange(len(df))
-    
+
     ax.bar(x_pos, df['coverage'], alpha=0.7, color='green')
     # Use the first alpha value for the target line, or calculate average if multiple
     if isinstance(param_alpha, list):
@@ -127,7 +130,7 @@ def plot_classification_coverage_score(df, param_alpha):
     ax.legend(fontsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
-    
+
     return fig
 
 
@@ -135,7 +138,7 @@ def plot_non_contiguous_prediction_sets(df):
     """Create the Non-contiguous Prediction Sets plot."""
     fig, ax = plt.subplots(figsize=(8, 5))
     x_pos = np.arange(len(df))
-    
+
     ax.bar(x_pos, df['non_contiguous_percentage'], alpha=0.7, color='red')
     ax.set_xlabel('Methods', fontsize=12)
     ax.set_ylabel('Non-contiguous Sets (ratio)', fontsize=12)
@@ -145,7 +148,7 @@ def plot_non_contiguous_prediction_sets(df):
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
-    
+
     return fig
 
 
@@ -153,7 +156,7 @@ def plot_quadratic_weighted_kappa(df):
     """Create the Quadratic Weighted Kappa plot."""
     fig, ax = plt.subplots(figsize=(8, 5))
     x_pos = np.arange(len(df))
-    
+
     ax.bar(x_pos, df['qwk'], alpha=0.7, color='teal')
     ax.set_xlabel('Methods', fontsize=12)
     ax.set_ylabel('Quadratic Weighted Kappa', fontsize=12)
@@ -163,7 +166,7 @@ def plot_quadratic_weighted_kappa(df):
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
-    
+
     return fig
 
 
@@ -180,7 +183,7 @@ def plot_individual_metrics_grid(df, param_alpha):
 def plot_size_stratified_coverage(results, y_test, param_alpha):
     """Create the size-stratified coverage plot."""
     from metrics import get_metrics_across_reps
-    
+
     # Get all unique set sizes across all methods
     all_sizes = set()
     for name, pred_results in results.items():
@@ -189,9 +192,9 @@ def plot_size_stratified_coverage(results, y_test, param_alpha):
 
     if not all_sizes:
         return None, None
-    
+
     all_sizes = sorted(all_sizes)
-    
+
     # Create data for plotting
     ssc_data = []
     for name, pred_results in results.items():
@@ -200,20 +203,20 @@ def plot_size_stratified_coverage(results, y_test, param_alpha):
         for size in all_sizes:
             row_data[f'size_{size}'] = metrics.size_stratified_coverage.get(size, 0.0)
         ssc_data.append(row_data)
-    
+
     ssc_df = pd.DataFrame(ssc_data)
-    
+
     # Plot size-stratified coverage
     fig, ax = plt.subplots(figsize=(12, 6))
-    
+
     x_pos = np.arange(len(all_sizes))
     bar_width = 0.8 / len(ssc_df)
-    
+
     for i, (_, row) in enumerate(ssc_df.iterrows()):
         coverages = [row[f'size_{size}'] for size in all_sizes]
-        ax.bar(x_pos + i * bar_width - (bar_width * len(ssc_df)) / 2, 
+        ax.bar(x_pos + i * bar_width - (bar_width * len(ssc_df)) / 2,
                 coverages, bar_width, label=row['method'], alpha=0.7)
-    
+
     ax.set_xlabel('Prediction Set Size', fontsize=12)
     ax.set_ylabel('Coverage (ratio)', fontsize=12)
     ax.set_title('Size-Stratified Coverage (SSC)', fontsize=14)
@@ -225,7 +228,7 @@ def plot_size_stratified_coverage(results, y_test, param_alpha):
         target_alpha = sum(param_alpha) / len(param_alpha) if param_alpha else 0.2
     else:
         target_alpha = param_alpha
-    ax.axhline(y=1-target_alpha, color='green', linestyle='--', 
+    ax.axhline(y=1-target_alpha, color='green', linestyle='--',
                 label=f'Target Coverage (1-α = {1-target_alpha:.2f})')
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
@@ -238,7 +241,7 @@ def plot_classification_accuracy(df):
     """Create the Classification Accuracy plot."""
     fig, ax = plt.subplots(figsize=(8, 5))
     x_pos = np.arange(len(df))
-    
+
     ax.bar(x_pos, df['accuracy'], alpha=0.7, color='blue')
     ax.set_xlabel('Methods', fontsize=12)
     ax.set_ylabel('Accuracy', fontsize=12)
@@ -248,7 +251,7 @@ def plot_classification_accuracy(df):
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
-    
+
     return fig
 
 
@@ -256,7 +259,7 @@ def plot_mean_absolute_error(df):
     """Create the Mean Absolute Error (MAE) plot."""
     fig, ax = plt.subplots(figsize=(8, 5))
     x_pos = np.arange(len(df))
-    
+
     ax.bar(x_pos, df['mae'], alpha=0.7, color='red')
     ax.set_xlabel('Methods', fontsize=12)
     ax.set_ylabel('Mean Absolute Error', fontsize=12)
@@ -266,7 +269,7 @@ def plot_mean_absolute_error(df):
     ax.tick_params(axis='y', labelsize=10)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
-    
+
     return fig
 
 
@@ -313,4 +316,82 @@ def plot_prediction_set_size_distribution(results):
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
 
-    return fig 
+    return fig
+
+
+def plot_coverage_across_alphas(df: pandas.DataFrame, ax=None) -> Tuple[matplotlib.pyplot.Figure, matplotlib.pyplot.Axes]:
+    if ax is None:
+        f, ax = plt.subplots(figsize=(5.4, 3.78))
+    else:
+        f = ax.figure
+    (
+        so.Plot(data=df, x="alpha", y="coverage", color="method")
+        .add(so.Line(), so.Agg())  # mean line per x & color
+        .add(so.Band(), so.Est(errorbar=("ci", 95)))  # shaded 95% CI
+        .label(x="Alpha", y="Coverage")
+        .on(ax).plot()
+    )
+    alphas = np.linspace(df["alpha"].min(), df["alpha"].max(), 100)
+    expected = 1 - alphas
+    ax.plot(alphas, expected, linestyle="dashed", color="black", linewidth=0.5, zorder=1)
+    plt.tight_layout()
+    return f, ax
+
+
+def plot_classification_mean_width_across_alphas(df: pandas.DataFrame, ax=None) -> Tuple[matplotlib.pyplot.Figure, matplotlib.pyplot.Axes]:
+    if ax is None:
+        f, ax = plt.subplots(figsize=(5.4, 3.78))
+    else:
+        f = ax.figure
+    (
+        so.Plot(data=df, x="alpha", y="mean_width", color="method")
+        .add(so.Line(), so.Agg())  # mean line per x & color
+        .add(so.Band(), so.Est(errorbar=("ci", 95)))  # shaded 95% CI
+        .label(x="alpha", y="Mean Prediction Set Size")
+        .on(ax).plot()
+    )
+    plt.tight_layout()
+    return f, ax
+
+
+def plot_regression_mean_width_across_alphas(df: pandas.DataFrame, ax=None) -> Tuple[matplotlib.pyplot.Figure, matplotlib.pyplot.Axes]:
+    f = plt.figure()
+    (
+        so.Plot(data=df, x="alpha", y="mean_range", color="method")
+        .add(so.Line(), so.Agg())  # mean line per x & color
+        .add(so.Band(), so.Est(errorbar=("ci", 95)))  # shaded 95% CI
+        .label(x="alpha", y="Mean Interval Range")
+        .on(f).plot()
+    )
+    plt.tight_layout()
+    return f
+
+
+def plot_non_contiguous_perc_across_alphas(df: pandas.DataFrame, ax=None) -> Tuple[matplotlib.pyplot.Figure, matplotlib.pyplot.Axes]:
+    f = plt.figure()
+    (
+        so.Plot(data=df, x="alpha", y="mean_gaps", color="method")
+        .add(so.Line(), so.Agg())  # mean line per x & color
+        .add(so.Band(), so.Est(errorbar=("ci", 95)))  # shaded 95% CI
+        .label(x="alpha", y="CV%")
+        .on(f).plot()
+    )
+    plt.tight_layout()
+    return f
+
+
+def plot_ssc_score_across_alphas(df: pandas.DataFrame, ax=None) -> Tuple[matplotlib.pyplot.Figure, matplotlib.pyplot.Axes]:
+    f = plt.figure()
+    (
+        so.Plot(data=df, x="alpha", y="ssc_score", color="method")
+        .add(so.Line(), so.Agg())  # mean line per x & color
+        .add(so.Band(), so.Est(errorbar=("ci", 95)))  # shaded 95% CI
+        .label(x="alpha", y="Min Size-Stratified Coverage")
+        .on(f).plot()
+    )
+    ax = plt.gca()
+    alphas = np.linspace(df["alpha"].min(), df["alpha"].max(), 100)
+    expected = 1 - alphas
+    ax.plot(alphas, expected, linestyle="dashed", color="black", linewidth=0.5, zorder=1)
+    plt.tight_layout()
+    return f

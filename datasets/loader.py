@@ -3,7 +3,7 @@ from pathlib import Path
 from datasets.base_dataset import Dataset
 
 
-def load_dataset(dataset: str, hold_out_size: int, root_path: str) -> Dataset:
+def load_dataset(dataset: str, hold_out_size: float, root_path: str) -> Dataset:
     """
     Load the dataset.
 

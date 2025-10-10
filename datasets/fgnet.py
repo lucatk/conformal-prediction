@@ -16,7 +16,7 @@ class FGNetDataset(Dataset):
     train_dataset: FGNet
     test_dataset: FGNet
 
-    hold_out_size: int
+    hold_out_size: float
     X_train: ndarray
     y_train: ndarray
     X_hold_out: ndarray
@@ -24,7 +24,7 @@ class FGNetDataset(Dataset):
     X_test: ndarray
     y_test: ndarray
 
-    def __init__(self, hold_out_size: int, root_path: str):
+    def __init__(self, hold_out_size: float, root_path: str):
         self.hold_out_size = hold_out_size
         self.train_dataset = FGNet(
             root=root_path,

@@ -1,12 +1,14 @@
 import base64
+import io
 from io import BytesIO
 from typing import Dict, Any, Iterable
 
+import matplotlib
 import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
-from highlight_text import fig_text, ax_text
+from highlight_text import ax_text
 from matplotlib import pyplot as plt
 from numpy import ndarray
 from skorch import NeuralNetClassifier
@@ -98,3 +100,50 @@ def image_tensor_to_base64(image):
 def st_narrow():
     _, col, _ = st.columns([1, 6, 1])
     return col
+
+
+from typing import TypeVar, List, Dict, Any, cast
+
+T = TypeVar("T", bound=Dict[str, List[Any]])
+U = Dict[str, Any]
+
+
+def transpose_typeddict(data: T) -> List[U]:
+    """
+    Transpose a TypedDict of lists (like CollectedMetrics)
+    into a list of dicts (like List[FloatMetrics]).
+    """
+    if not data:
+        return []
+
+    keys = list(data.keys())
+    length = len(data[keys[0]])
+    for k in keys:
+        if len(data[k]) != length:
+            raise ValueError(f"All lists must have the same length (key '{k}' differs).")
+
+    result = [ {k: data[k][i] for k in keys} for i in range(length) ]
+    return cast(List[U], result)
+
+
+def fig_to_pgf_buffer(fig: matplotlib.pyplot.Figure) -> io.BytesIO:
+    buf = io.BytesIO()
+    fig.savefig(buf, format="pgf", bbox_inches="tight", pad_inches=0.02)
+    buf.seek(0)
+    return buf
+
+
+def render_plot_download_button(name: str, loss_fn: list[str], score_alg: list[str], dataset: str, model: str, fig: matplotlib.pyplot.Figure):
+    if st.button(f'Prepare {name} plot export', key=f'prep_export_{name}'):
+        buf = fig_to_pgf_buffer(fig)
+        timestamp = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
+        loss_fn_str = "_".join(loss_fn)
+        score_alg_str = "_".join(score_alg)
+        filename = f"plot_{name}_{timestamp}_{dataset}_{model}_{loss_fn_str}_{score_alg_str}.pgf"
+        st.download_button(
+            label="Export Results",
+            data=buf,
+            file_name=filename,
+            help='Download plot as .pgf file'
+        )
+

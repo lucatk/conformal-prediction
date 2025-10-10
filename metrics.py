@@ -2,12 +2,16 @@ from typing import NamedTuple, Any, Dict
 from collections import OrderedDict
 
 import numpy as np
+import pandas as pd
 from numpy import ndarray
-from mapie.metrics.classification import classification_coverage_score, classification_mean_width_score
+from mapie.metrics.classification import classification_coverage_score, classification_mean_width_score, \
+    classification_ssc_score
+
+from util import transpose_typeddict
 
 
-class Metrics(NamedTuple):
-    """Metrics for classification tasks."""
+class FloatMetrics(NamedTuple):
+    """Metrics for classification tasks with mean across multiple replications."""
     coverage: float                              # Classification Coverage Score
     mean_width: float                            # Classification Mean Width Score
     mean_range: float                            # Mean Interval Range (Regression Mean Width Score)
@@ -18,17 +22,33 @@ class Metrics(NamedTuple):
     qwk: float                                   # Quadratic Weighted Kappa
     non_contiguous_percentage: float             # Percentage of Non-Contiguous Prediction Sets
     size_stratified_coverage: Dict[int, float]   # Coverage per Prediction Set Size
+    ssc_score: float                             # Worst-case coverage across bins
+
+
+class CollectedMetrics(NamedTuple):
+    """Metrics for classification tasks collected across multiple replications."""
+    coverage: list[float]                              # Classification Coverage Score
+    mean_width: list[float]                            # Classification Mean Width Score
+    mean_range: list[float]                            # Mean Interval Range (Regression Mean Width Score)
+    mean_gaps: list[float]                             # Mean Gaps within Prediction Set
+    pred_set_mae: list[float]                          # Mean Absolute Error of Prediction Set (Ordinal Distance from True Class)
+    accuracy: list[float]                              # Classification Accuracy
+    mae: list[float]                                   # Mean Absolute Error
+    qwk: list[float]                                   # Quadratic Weighted Kappa
+    non_contiguous_percentage: list[float]             # Percentage of Non-Contiguous Prediction Sets
+    size_stratified_coverage: list[Dict[int, float]]   # Coverage per Prediction Set Size
+    ssc_score: list[float]                             # Worst-case coverage across bins
 
 
 def get_metrics(
     y_true: ndarray,
     preds: tuple[ndarray, ndarray],
-) -> Metrics:
+) -> FloatMetrics:
     """Calculate all metrics for a single prediction result."""
     y_pred, y_pred_set = preds
     pred_set = y_pred_set[:, :, 0]
-    
-    return Metrics(
+
+    return FloatMetrics(
         coverage=float(classification_coverage_score(y_true, pred_set)),
         mean_width=float(classification_mean_width_score(pred_set)),
         mean_range=calc_mean_range(pred_set),
@@ -39,37 +59,61 @@ def get_metrics(
         qwk=calc_qwk(y_true, y_pred),
         non_contiguous_percentage=calc_non_contiguous_percentage(pred_set),
         size_stratified_coverage=calc_size_stratified_coverage(y_true, pred_set),
+        # ssc_score=float(classification_ssc_score(y_true, y_pred_set)),
+        ssc_score=0
+    )
+
+
+def get_metrics_across_reps_collect(
+    y_true: ndarray,
+    rep_preds: list[tuple[ndarray, ndarray]],
+) -> CollectedMetrics:
+    """Calculate and collect metrics across multiple replications."""
+    rep_metrics = [get_metrics(y_true, preds) for preds in rep_preds]
+    return CollectedMetrics(
+        coverage=[m.coverage for m in rep_metrics],
+        mean_width=[m.mean_width for m in rep_metrics],
+        mean_range=[m.mean_range for m in rep_metrics],
+        mean_gaps=[m.mean_gaps for m in rep_metrics],
+        pred_set_mae=[m.pred_set_mae for m in rep_metrics],
+        accuracy=[m.accuracy for m in rep_metrics],
+        mae=[m.mae for m in rep_metrics],
+        qwk=[m.qwk for m in rep_metrics],
+        non_contiguous_percentage=[m.non_contiguous_percentage for m in rep_metrics],
+        size_stratified_coverage=[m.size_stratified_coverage for m in rep_metrics],
+        ssc_score=[m.ssc_score for m in rep_metrics],
     )
 
 
 def get_metrics_across_reps(
     y_true: ndarray,
     rep_preds: list[tuple[ndarray, ndarray]],
-) -> Metrics:
+) -> FloatMetrics:
     """Calculate metrics averaged across multiple replications."""
-    rep_metrics = [get_metrics(y_true, preds) for preds in rep_preds]
+    rep_metrics = get_metrics_across_reps_collect(y_true, rep_preds)
     
     # Aggregate size-stratified coverage across replications
     all_size_coverage = {}
-    for metric in rep_metrics:
-        for size, coverage in metric.size_stratified_coverage.items():
+    for metric in rep_metrics.size_stratified_coverage:
+        for size, coverage in metric.items():
             if size not in all_size_coverage:
                 all_size_coverage[size] = []
             all_size_coverage[size].append(coverage)
     
     avg_size_coverage = {size: float(np.mean(coverages)) for size, coverages in all_size_coverage.items()}
     
-    return Metrics(
-        coverage=float(np.mean([m.coverage for m in rep_metrics])),
-        mean_width=float(np.mean([m.mean_width for m in rep_metrics])),
-        mean_range=float(np.mean([m.mean_range for m in rep_metrics])),
-        mean_gaps=float(np.mean([m.mean_gaps for m in rep_metrics])),
-        pred_set_mae=float(np.mean([m.pred_set_mae for m in rep_metrics])),
-        accuracy=float(np.mean([m.accuracy for m in rep_metrics])),
-        mae=float(np.mean([m.mae for m in rep_metrics])),
-        qwk=float(np.mean([m.qwk for m in rep_metrics])),
-        non_contiguous_percentage=float(np.mean([m.non_contiguous_percentage for m in rep_metrics])),
+    return FloatMetrics(
+        coverage=float(np.mean(rep_metrics.coverage)),
+        mean_width=float(np.mean(rep_metrics.mean_width)),
+        mean_range=float(np.mean(rep_metrics.mean_range)),
+        mean_gaps=float(np.mean(rep_metrics.mean_gaps)),
+        pred_set_mae=float(np.mean(rep_metrics.pred_set_mae)),
+        accuracy=float(np.mean(rep_metrics.accuracy)),
+        mae=float(np.mean(rep_metrics.mae)),
+        qwk=float(np.mean(rep_metrics.qwk)),
+        non_contiguous_percentage=float(np.mean(rep_metrics.non_contiguous_percentage)),
         size_stratified_coverage=avg_size_coverage,
+        ssc_score=float(np.mean(rep_metrics.ssc_score)),
     )
 
 
@@ -174,3 +218,42 @@ def calc_size_stratified_coverage(
     
     # Return ordered dictionary sorted by set size
     return OrderedDict(sorted(coverage_dict.items()))
+
+
+def get_results_metrics(results: Dict[str, list[tuple[ndarray, ndarray]]], y_test: ndarray, mode: str = 'mean') -> pd.DataFrame:
+    if mode not in ['mean', 'collect']:
+        raise ValueError(f"Invalid mode: {mode}. Must be 'mean' or 'collect'.")
+
+    metrics_data = []
+    for name, pred_results in results.items():
+        # Parse the format: model_loss_fn_score_alg_alphaX.XX
+        alpha_part = name.split('_alpha')[-1]
+        base_name = name.replace(f'_alpha{alpha_part}', '')
+        parts = base_name.split('_', 2 if mode == 'mean' else 3)
+        model, loss_fn, score_alg = parts[0], parts[1], parts[2]
+        alpha = float(alpha_part)
+
+        if mode == 'mean':
+            metrics = get_metrics_across_reps(y_test, pred_results)
+            metrics_data.append({
+                'name': name,
+                'model': model,
+                'loss_fn': loss_fn,
+                'score_alg': score_alg,
+                'alpha': alpha,
+                **metrics._asdict()
+            })
+        elif mode == 'collect':
+            metrics = transpose_typeddict(get_metrics_across_reps_collect(y_test, pred_results)._asdict())
+            for rep, rep_metrics in enumerate(metrics):
+                metrics_data.append({
+                    'name': f'{name}_rep{rep}',
+                    'model': model,
+                    'loss_fn': loss_fn,
+                    'score_alg': score_alg,
+                    'alpha': alpha,
+                    'rep': rep,
+                    **rep_metrics
+                })
+
+    return pd.DataFrame(metrics_data)
