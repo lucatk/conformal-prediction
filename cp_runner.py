@@ -5,12 +5,14 @@ from pathlib import Path
 from threading import Thread
 from typing import Callable
 
+import numpy
 import pandas as pd
 import torch
 from dlordinal.output_layers import COPOC
 from mapie.classification import SplitConformalClassifier
 from numpy import ndarray
 from sklearn.base import ClassifierMixin
+from skorch import NeuralNetClassifier
 from skorch.callbacks import Callback, EarlyStopping
 from streamlit.elements.progress import ProgressMixin
 from torch import nn
@@ -132,6 +134,8 @@ class CPRunner(Thread):
 
                 X_train, y_train = self.dataset.get_train_data()
                 X_hold_out, y_hold_out = self.dataset.get_hold_out_data()
+                X_test, y_test = self.dataset.get_test_data()
+
                 print("X_train shape:", X_train.shape)
                 print("y_train shape:", y_train.shape)
                 for idx, (name, (_, predictor)) in enumerate((pbar_fit := tqdm(predictors.items(), leave=False))):
@@ -170,8 +174,6 @@ class CPRunner(Thread):
 
                 self.set_progress(0.5, progress_bar, f'[Replication {rep+1}] Predicting (0/{len(predictors)})...')
 
-                X_test, y_test = self.dataset.get_test_data()
-
                 for idx, (name, (alpha, predictor)) in enumerate((pbar_pred := tqdm(predictors.items(), desc="Predicting...", leave=False))):
                     if name not in self.preds:
                         self.preds[name] = []
@@ -201,10 +203,12 @@ class CPRunner(Thread):
 
     def _get_model_set(self, num_classes: int):
         models_list = []
+        numpy.random.seed(1)
+        torch.manual_seed(1)
         for model_name in self.model:
             if model_name == 'resnet18':
                 model = models.resnet18(weights="IMAGENET1K_V1")
-                model.fc = nn.Linear(model.fc.in_features, num_classes)
+                model.fc = nn.Sequential(nn.Linear(model.fc.in_features, num_classes), nn.Softmax(dim=1))
             elif model_name == 'resnet18-uni':
                 model = models.resnet18(weights="IMAGENET1K_V1")
                 model.fc = nn.Sequential(nn.Linear(model.fc.in_features, num_classes), COPOC())
@@ -222,7 +226,7 @@ class CPRunner(Thread):
         return [(
             model_idx,
             loss_fn_idx,
-            SoftmaxNeuralNetClassifier(
+            NeuralNetClassifier(
                 module=model.to(self.device),
                 criterion=loss_fn.to(self.device),
                 optimizer=AdamW,
@@ -245,7 +249,7 @@ class CPRunner(Thread):
                 loss_fns.append(TriangularLoss(base_loss=CrossEntropyLoss(), num_classes=num_classes))
             elif loss_fn == 'WeightedKappa':
                 from dlordinal.losses import WKLoss
-                loss_fns.append(WKLoss(num_classes=num_classes, use_logits=True))
+                loss_fns.append(WKLoss(num_classes=num_classes, use_logits=False))
             elif loss_fn == 'EMD':
                 from dlordinal.losses import EMDLoss
                 loss_fns.append(EMDLoss(num_classes=num_classes))
