@@ -59,8 +59,7 @@ def get_metrics(
         qwk=calc_qwk(y_true, y_pred),
         non_contiguous_percentage=calc_non_contiguous_percentage(pred_set),
         size_stratified_coverage=calc_size_stratified_coverage(y_true, pred_set),
-        # ssc_score=float(classification_ssc_score(y_true, y_pred_set)),
-        ssc_score=0
+        ssc_score=float(classification_ssc_score(y_true, y_pred_set)),
     )
 
 

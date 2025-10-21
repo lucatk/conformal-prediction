@@ -398,7 +398,7 @@ if agg_mode == 0:
 elif agg_mode == 1:
     st.subheader('Plots')
 
-    f_ccs = plot_coverage_across_alphas(df_filtered)
+    f_ccs, _ = plot_coverage_across_alphas(df_filtered)
     st.pyplot(f_ccs)
     render_plot_download_button('ccs', loss_fn, score_alg, cp_runner.dataset.name, str(cp_runner.model), f_ccs)
 
@@ -406,15 +406,15 @@ elif agg_mode == 1:
     st.pyplot(f_ssc_score)
     render_plot_download_button('ssc_score', loss_fn, score_alg, cp_runner.dataset.name, str(cp_runner.model), f_ssc_score)
 
-    f_cmws = plot_classification_mean_width_across_alphas(df_filtered)
+    f_cmws, _ = plot_classification_mean_width_across_alphas(df_filtered)
     st.pyplot(f_cmws)
     render_plot_download_button('cmws', loss_fn, score_alg, cp_runner.dataset.name, str(cp_runner.model), f_cmws)
 
-    f_rmws = plot_regression_mean_width_across_alphas(df_filtered)
+    f_rmws, _ = plot_regression_mean_width_across_alphas(df_filtered)
     st.pyplot(f_rmws)
     render_plot_download_button('rmws', loss_fn, score_alg, cp_runner.dataset.name, str(cp_runner.model), f_rmws)
 
-    f_cv = plot_non_contiguous_perc_across_alphas(df_filtered)
+    f_cv, _ = plot_non_contiguous_perc_across_alphas(df_filtered)
     st.pyplot(f_cv)
     render_plot_download_button('cv', loss_fn, score_alg, cp_runner.dataset.name, str(cp_runner.model), f_cv)
 

@@ -5,7 +5,8 @@ import numpy as np
 import pandas
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn.objects as so
+import seaborn as sns
+
 
 def plot_overall_performance_comparison(df_performance, param_alpha):
     """Create the overall performance comparison plot with three y-axes:
@@ -13,7 +14,6 @@ def plot_overall_performance_comparison(df_performance, param_alpha):
     - Right: Mean Width (range >1, normal)
     - Far right: Non-contiguous % (0-1, inverted, smaller is better at top)
     """
-    import matplotlib as mpl
     fig, ax = plt.subplots(figsize=(12, 8))
     ax_mw = ax.twinx()  # Mean width axis (right)
     ax_nc = ax.twinx()  # Non-contiguous % axis (far right)
@@ -324,17 +324,26 @@ def plot_coverage_across_alphas(df: pandas.DataFrame, ax=None) -> Tuple[matplotl
         f, ax = plt.subplots(figsize=(5.4, 3.78))
     else:
         f = ax.figure
-    (
-        so.Plot(data=df, x="alpha", y="coverage", color="method")
-        .add(so.Line(), so.Agg())  # mean line per x & color
-        .add(so.Band(), so.Est(errorbar=("ci", 95)))  # shaded 95% CI
-        .label(x="Alpha", y="Coverage")
-        .on(ax).plot()
-    )
+    
+    # Plot with seaborn lineplot
+    sns.lineplot(data=df, x="alpha", y="coverage", hue="method", ax=ax, errorbar=("ci", 95))
+    
+    # Add expected coverage line
     alphas = np.linspace(df["alpha"].min(), df["alpha"].max(), 100)
     expected = 1 - alphas
     ax.plot(alphas, expected, linestyle="dashed", color="black", linewidth=0.5, zorder=1)
+    
+    # Fix overlapping x-axis labels
+    ax.tick_params(axis='x', rotation=45, labelsize=10)
+    # Get the current tick positions and labels, then format the labels
+    current_ticks = ax.get_xticks()
+    ax.set_xticklabels([f'{x:.2f}' for x in current_ticks], rotation=45, ha='right')
+    
+    ax.set_xlabel("Alpha")
+    ax.set_ylabel("Coverage")
+    
     plt.tight_layout()
+    plt.close()
     return f, ax
 
 
@@ -343,55 +352,93 @@ def plot_classification_mean_width_across_alphas(df: pandas.DataFrame, ax=None) 
         f, ax = plt.subplots(figsize=(5.4, 3.78))
     else:
         f = ax.figure
-    (
-        so.Plot(data=df, x="alpha", y="mean_width", color="method")
-        .add(so.Line(), so.Agg())  # mean line per x & color
-        .add(so.Band(), so.Est(errorbar=("ci", 95)))  # shaded 95% CI
-        .label(x="alpha", y="Mean Prediction Set Size")
-        .on(ax).plot()
-    )
+
+    # Plot with seaborn lineplot
+    sns.lineplot(data=df, x="alpha", y="mean_width", hue="method", ax=ax, errorbar=("ci", 95))
+    
+    # Fix overlapping x-axis labels
+    ax.tick_params(axis='x', rotation=45, labelsize=10)
+    # Get the current tick positions and labels, then format the labels
+    current_ticks = ax.get_xticks()
+    ax.set_xticklabels([f'{x:.2f}' for x in current_ticks], rotation=45, ha='right')
+
+    ax.set_xlabel("alpha")
+    ax.set_ylabel("Mean Prediction Set Size")
+
     plt.tight_layout()
+    plt.close()
     return f, ax
 
 
 def plot_regression_mean_width_across_alphas(df: pandas.DataFrame, ax=None) -> Tuple[matplotlib.pyplot.Figure, matplotlib.pyplot.Axes]:
-    f = plt.figure()
-    (
-        so.Plot(data=df, x="alpha", y="mean_range", color="method")
-        .add(so.Line(), so.Agg())  # mean line per x & color
-        .add(so.Band(), so.Est(errorbar=("ci", 95)))  # shaded 95% CI
-        .label(x="alpha", y="Mean Interval Range")
-        .on(f).plot()
-    )
+    if ax is None:
+        f, ax = plt.subplots(figsize=(5.4, 3.78))
+    else:
+        f = ax.figure
+    
+    # Plot with seaborn lineplot
+    sns.lineplot(data=df, x="alpha", y="mean_range", hue="method", ax=ax, errorbar=("ci", 95))
+    
+    # Fix overlapping x-axis labels
+    ax.tick_params(axis='x', rotation=45, labelsize=10)
+    # Get the current tick positions and labels, then format the labels
+    current_ticks = ax.get_xticks()
+    ax.set_xticklabels([f'{x:.2f}' for x in current_ticks], rotation=45, ha='right')
+    
+    ax.set_xlabel("alpha")
+    ax.set_ylabel("Mean Interval Range")
+    
     plt.tight_layout()
-    return f
+    plt.close()
+    return f, ax
 
 
 def plot_non_contiguous_perc_across_alphas(df: pandas.DataFrame, ax=None) -> Tuple[matplotlib.pyplot.Figure, matplotlib.pyplot.Axes]:
-    f = plt.figure()
-    (
-        so.Plot(data=df, x="alpha", y="mean_gaps", color="method")
-        .add(so.Line(), so.Agg())  # mean line per x & color
-        .add(so.Band(), so.Est(errorbar=("ci", 95)))  # shaded 95% CI
-        .label(x="alpha", y="CV%")
-        .on(f).plot()
-    )
+    if ax is None:
+        f, ax = plt.subplots(figsize=(5.4, 3.78))
+    else:
+        f = ax.figure
+    
+    # Plot with seaborn lineplot
+    sns.lineplot(data=df, x="alpha", y="mean_gaps", hue="method", ax=ax, errorbar=("ci", 95))
+    
+    # Fix overlapping x-axis labels
+    ax.tick_params(axis='x', rotation=45, labelsize=10)
+    # Get the current tick positions and labels, then format the labels
+    current_ticks = ax.get_xticks()
+    ax.set_xticklabels([f'{x:.2f}' for x in current_ticks], rotation=45, ha='right')
+    
+    ax.set_xlabel("alpha")
+    ax.set_ylabel("CV%")
+    
     plt.tight_layout()
-    return f
+    plt.close()
+    return f, ax
 
 
 def plot_ssc_score_across_alphas(df: pandas.DataFrame, ax=None) -> Tuple[matplotlib.pyplot.Figure, matplotlib.pyplot.Axes]:
-    f = plt.figure()
-    (
-        so.Plot(data=df, x="alpha", y="ssc_score", color="method")
-        .add(so.Line(), so.Agg())  # mean line per x & color
-        .add(so.Band(), so.Est(errorbar=("ci", 95)))  # shaded 95% CI
-        .label(x="alpha", y="Min Size-Stratified Coverage")
-        .on(f).plot()
-    )
-    ax = plt.gca()
+    if ax is None:
+        f, ax = plt.subplots(figsize=(5.4, 3.78))
+    else:
+        f = ax.figure
+    
+    # Plot with seaborn lineplot
+    sns.lineplot(data=df, x="alpha", y="ssc_score", hue="method", ax=ax, errorbar=("ci", 95))
+    
+    # Add expected coverage line
     alphas = np.linspace(df["alpha"].min(), df["alpha"].max(), 100)
     expected = 1 - alphas
     ax.plot(alphas, expected, linestyle="dashed", color="black", linewidth=0.5, zorder=1)
+    
+    # Fix overlapping x-axis labels
+    ax.tick_params(axis='x', rotation=45, labelsize=10)
+    # Get the current tick positions and labels, then format the labels
+    current_ticks = ax.get_xticks()
+    ax.set_xticklabels([f'{x:.2f}' for x in current_ticks], rotation=45, ha='right')
+    
+    ax.set_xlabel("alpha")
+    ax.set_ylabel("Min Size-Stratified Coverage")
+    
     plt.tight_layout()
-    return f
+    plt.close()
+    return f, ax

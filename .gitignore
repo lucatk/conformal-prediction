@@ -1,3 +1,7 @@
 .datasets/
 .idea/
 .env
+
+table_outputs
+plot_outputs
+exports
